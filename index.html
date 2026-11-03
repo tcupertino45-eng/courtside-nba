@@ -183,8 +183,11 @@ tr.bench-split td { font: 600 11px var(--font-data); color: var(--muted); text-t
 .plays .what { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
 .plays .kind { font: 600 10.5px/1 var(--font-data); text-transform: uppercase; letter-spacing: .05em; padding: 4px 6px; border-radius: 4px; background: var(--line); color: var(--muted); white-space: nowrap; }
 .plays .k-score .kind { background: color-mix(in srgb, var(--good) 18%, var(--surface)); color: var(--good); }
+.plays .kind.pts { font: 800 13px/1 var(--font-data); min-width: 30px; text-align: center; padding: 5px 6px; }
 .plays .k-tov .kind { background: color-mix(in srgb, var(--accent) 16%, var(--surface)); color: var(--accent); }
-.plays .k-eject { border-left-color: var(--live); }
+.plays .k-block .kind, .plays .kind.k-def { background: color-mix(in srgb, var(--above) 18%, var(--surface)); color: var(--above); }
+.plays .kind.k-to { background: color-mix(in srgb, var(--accent) 16%, var(--surface)); color: var(--accent); }
+
 .plays .k-eject .kind { background: var(--live); color: #fff; }
 .plays .tm { display: inline-flex; align-items: center; gap: 4px; font: 600 12px var(--font-data); }
 .plays .tm img { width: 18px; height: 18px; object-fit: contain; }
@@ -825,7 +828,8 @@ function classifyPlay(p) {
   if (/eject/i.test(tt + ' ' + tx)) return 'eject';
   if (p.scoringPlay) return 'score';
   if (/timeout/i.test(tt) && !/official|tv timeout/i.test(tt + ' ' + tx)) return 'timeout';
-  if (TOV_RE.test(tt) || /turnover/i.test(tx)) return 'tov';
+  if (/\bblocks\b/i.test(tx)) return 'block';
+  if (TOV_RE.test(tt) || /turnover/i.test(tx)) return /\bsteals?\)/i.test(tx) ? 'steal' : 'tov';
   return null;
 }
 function recentPlays(plays, cs = []) {
@@ -841,7 +845,7 @@ function recentPlays(plays, cs = []) {
   const badge = t => t ? `<span class="tm">${t.logo ? `<img src="${esc(t.logo)}" alt="">` : ''}${esc(t.abbr)}</span>` : '';
   const items = plays.map(p => ({ p, kind: classifyPlay(p) })).filter(x => x.kind && (x.kind !== 'timeout' || teamOf(x.p))).slice(-15).reverse();
   if (!items.length) return '';
-  const LBL = { score: 'Cesta', tov: 'Turnover', timeout: 'Tempo', eject: 'Expulsão' };
+  const LBL = { score: '', tov: 'TO', timeout: '', eject: 'Expulsão', block: 'Toco', steal: 'Roubo' };
   const rows = items.map(({ p, kind }) => {
     const t = teamOf(p);
     const when = `${p.period?.number ? (p.period.number > 4 ? 'OT' + (p.period.number - 4 > 1 ? p.period.number - 4 : '') : p.period.number + 'º') + ' · ' : ''}${p.clock?.displayValue || ''}`;
@@ -851,9 +855,9 @@ function recentPlays(plays, cs = []) {
         <span class="muted">–</span>
         <span class="${String(t?.id) === teams[1].id ? 'won' : ''}"><b>${esc(p.homeScore)}</b>${badge(teams[1])}</span></span>` : '';
     return `<li class="k-${kind}"><span class="t">${esc(when)}</span>
-      <span class="what">${kind === 'timeout' ? '' : `<span class="kind">${LBL[kind]}${kind === 'score' && p.scoreValue ? ` +${esc(p.scoreValue)}` : ''}</span>`}${what}</span>${scoreBox}</li>`;
+      <span class="what">${what}</span>${scoreBox}</li>`;
   }).join('');
-  return `<section class="section"><div class="section-head"><h2>Últimas jogadas</h2><span class="eyebrow">Cestas · turnovers · tempos · expulsões</span></div>
+  return `<section class="section"><div class="section-head"><h2>Últimas jogadas</h2><span class="eyebrow">Cestas · roubos · tocos · turnovers · tempos · expulsões</span></div>
     <ul class="plays">${rows}</ul></section>`;
 }
 
