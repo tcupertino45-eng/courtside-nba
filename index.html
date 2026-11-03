@@ -338,6 +338,47 @@ table.box th, table.box td { padding: 7px 7px; }
 table.box td { font-size: 12.5px; }
 @media (max-width: 900px) { .box-pair { grid-template-columns: 1fr; } }
 
+/* Aba Times */
+.std-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.std-conf { min-width: 0; }
+table.std td, table.std th { padding: 8px 9px; }
+.team-link { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; font-weight: 500; }
+.team-link:hover span:last-child { color: var(--accent); }
+.team-link .rk { width: 1.6em; text-align: right; color: var(--muted); font: 600 12px var(--font-data); }
+.team-link img { width: 22px; height: 22px; object-fit: contain; }
+table.std tr.z-po td:first-child { box-shadow: inset 3px 0 0 var(--above); }
+table.std tr.z-pi td:first-child { box-shadow: inset 3px 0 0 var(--gold); }
+.zone-key { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: -1px; }
+.zone-key.z-po { background: var(--above); } .zone-key.z-pi { background: var(--gold); }
+td.l10 { text-align: center; }
+.vd { display: inline-flex; gap: 2px; }
+.vd i { font: 700 10px/1 var(--font-data); font-style: normal; width: 15px; height: 17px; display: inline-grid; place-items: center; border-radius: 3px; }
+.vd i.v { background: color-mix(in srgb, var(--good) 22%, var(--surface)); color: var(--good); }
+.vd i.d { background: color-mix(in srgb, var(--live) 18%, var(--surface)); color: var(--live); }
+.team-hero { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.team-hero > img { width: clamp(64px, 12vw, 96px); height: auto; }
+.team-facts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; color: var(--muted); font-size: 14px; }
+.team-facts b { color: var(--ink); }
+.net-pos { color: var(--above); } .net-neg { color: var(--below); }
+.onoff-table tr.low-sample td { opacity: .5; }
+.onoff-table td { text-align: center; } .onoff-table td:first-child { text-align: left; }
+.dbar .pos2 { left: 50%; background: var(--above); } .dbar .neg2 { right: 50%; background: var(--below); }
+.combo-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.combo { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: grid; gap: 10px; min-width: 0; }
+.combo-head { display: flex; justify-content: space-between; align-items: center; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { border: 1px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 99px; padding: 5px 10px; font-size: 13px; cursor: pointer; }
+.chip:hover { border-color: var(--ink); }
+.chip.on { background: var(--sky); border-color: var(--sky); color: var(--sky-ink); font-weight: 600; }
+.chip.off { background: color-mix(in srgb, var(--live) 14%, var(--surface)); border-color: var(--live); color: var(--live); text-decoration: line-through; }
+.chip.demo { cursor: default; padding: 1px 7px; font-size: 11px; }
+.combo-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 1px; background: var(--line); border-radius: 8px; overflow: hidden; border: 1px solid var(--line); }
+.combo-stats > div { background: var(--surface); padding: 10px; display: grid; gap: 4px; }
+.combo-stats > div.best { background: color-mix(in srgb, var(--good) 14%, var(--surface)); }
+.combo-stats b { font: 700 20px var(--font-data); font-variant-numeric: tabular-nums; }
+.pill.small-sample { margin-left: 4px; color: var(--gold-text); border-color: var(--gold); text-transform: none; letter-spacing: 0; }
+@media (max-width: 900px) { .std-pair, .combo-pair { grid-template-columns: 1fr; } }
+
 .livebar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 16px; border: 1px solid var(--sky); border-radius: 10px; background: color-mix(in srgb, var(--sky) 22%, var(--surface)); text-decoration: none; }
 
 .section { display: grid; gap: 12px; }
@@ -365,6 +406,7 @@ table.box td { font-size: 12.5px; }
     <nav class="tabs" aria-label="Seções">
       <a href="#/jogos" data-tab="jogos">Jogos</a>
       <a href="#/jogadores" data-tab="jogadores">Jogadores</a>
+      <a href="#/times" data-tab="times">Times</a>
     </nav>
   </div>
 </header>
@@ -2038,6 +2080,381 @@ async function initAdvanced(pid, token, careerJson) {
   addEventListener('scroll', hide, true);
 })();
 
+/* ===================== ON/OFF: reconstrução das formações em quadra =====================
+   A partir do play-by-play da ESPN: titulares do box score no 1º período, inferência dos 5 em quadra
+   no início dos demais períodos e aplicação das substituições ("X enters the game for Y").
+   Para cada formação de 5 do time, soma tempo, pontos a favor/contra e os componentes das posses. */
+const TOV_TYPE_RE = /turnover|traveling|travelling|backcourt|double dribble|discontinued dribble|palming|carrying|offensive goaltending|3[- ]second violation|5[- ]second|8[- ]second|kicked ball|lane violation/i;
+const clockSec = v => { const s = String(v ?? ''); const m = s.match(/^(\d+):(\d+(?:\.\d+)?)$/); return m ? +m[1] * 60 + +m[2] : (isFinite(+s) ? +s : null); };
+const periodLen = n => n <= 4 ? 720 : 300;
+function gameStints(summary, teamId) {
+  teamId = String(teamId);
+  const box = summary.boxscore?.players || [];
+  const mine = box.find(b => String(b.team?.id) === teamId);
+  if (!mine) return null;
+  const roster = new Set((mine.statistics?.[0]?.athletes || []).map(a => String(a.athlete?.id)));
+  const starters = (mine.statistics?.[0]?.athletes || []).filter(a => a.starter).map(a => String(a.athlete?.id));
+  if (starters.length !== 5) return null;
+  const comp = summary.header?.competitions?.[0];
+  const isHome = (comp?.competitors || []).find(c => String(c.team?.id) === teamId)?.homeAway === 'home';
+  // Ordena por período e relógio (a ESPN às vezes insere jogadas fora de ordem); empate: ordem original
+  const plays = [...(summary.plays || [])].sort((a, b) => (a.period?.number || 0) - (b.period?.number || 0)
+    || (clockSec(b.clock?.displayValue) ?? 0) - (clockSec(a.clock?.displayValue) ?? 0) || (+a.sequenceNumber || 0) - (+b.sequenceNumber || 0));
+  const byPeriod = new Map();
+  for (const p of plays) { const n = p.period?.number || 0; if (!byPeriod.has(n)) byPeriod.set(n, []); byPeriod.get(n).push(p); }
+  const periods = [...byPeriod.keys()].filter(n => n > 0).sort((a, b) => a - b);
+
+  const minesIn = p => (p.participants || []).map(x => String(x.athlete?.id)).filter(id => roster.has(id));
+  const isSub = p => /substitution/i.test(p.type?.text || '') && String(p.team?.id) === teamId;
+  // Quem começou o período: aparece (jogando ou saindo) antes de ter entrado por substituição
+  function periodStarters(list, prevEnd) {
+    const start = [], entered = new Set();
+    for (const p of list) {
+      if (isSub(p)) {
+        const [inn, out] = (p.participants || []).map(x => String(x.athlete?.id));
+        if (out && roster.has(out) && !entered.has(out) && !start.includes(out)) start.push(out);
+        if (inn) entered.add(inn);
+      } else {
+        for (const id of minesIn(p)) if (!entered.has(id) && !start.includes(id)) start.push(id);
+      }
+      if (start.length >= 5) break;
+    }
+    // Quem jogou o período inteiro sem aparecer: completa com quem terminou o período anterior
+    for (const id of prevEnd || []) { if (start.length >= 5) break; if (!start.includes(id) && !entered.has(id)) start.push(id); }
+    return start.slice(0, 5);
+  }
+
+  const agg = {}; // chave "id1,id2,..." -> totais
+  let on = starters.slice(), prevEnd = null, lastAway = 0, lastHome = 0, warnings = 0;
+  const bucket = () => {
+    const k = on.slice().sort().join(',');
+    return agg[k] || (agg[k] = { sec: 0, pf: 0, pa: 0, tf: 0, tt: 0, tv: 0, to: 0, of: 0, ot: 0, ov: 0, oo: 0 });
+  };
+  // Substituição inconsistente (quem "sai" não está em quadra): escolhe quem saiu de fato olhando as jogadas seguintes
+  function guessLeaving(list, from, inn) {
+    let best = null, bestScore = -1;
+    for (const id of on) {
+      if (id === inn) continue;
+      let score = 1e6; // sem novos eventos no período: forte candidato a ter saído
+      for (let j = from + 1; j < list.length; j++) {
+        const q = list[j];
+        if (isSub(q)) {
+          const [i2, o2] = (q.participants || []).map(x => String(x.athlete?.id));
+          if (i2 === id) { score = 2e6; break; }       // depois "entra": então estava fora
+          if (o2 === id) { score = j; break; }          // depois sai: estava em quadra
+        } else if (minesIn(q).includes(id)) { score = j - 1e5; break; } // joga logo depois: estava em quadra
+      }
+      if (score > bestScore) { bestScore = score; best = id; }
+    }
+    return best;
+  }
+  for (const n of periods) {
+    const list = byPeriod.get(n);
+    if (n > 1) on = periodStarters(list, prevEnd);
+    if (on.length !== 5) warnings++;
+    let lastT = periodLen(n);
+    for (let k = 0; k < list.length; k++) {
+      const p = list[k];
+      const rem = clockSec(p.clock?.displayValue);
+      if (rem != null && rem <= lastT) { bucket().sec += lastT - rem; lastT = rem; }
+      const b = bucket();
+      // Pontos pela variação do placar (mais confiável que somar cestas)
+      const aw = +p.awayScore || 0, hm = +p.homeScore || 0;
+      const dA = aw - lastAway, dH = hm - lastHome; lastAway = aw; lastHome = hm;
+      if (dA || dH) { b.pf += isHome ? dH : dA; b.pa += isHome ? dA : dH; }
+      const tt = p.type?.text || '', ours = String(p.team?.id) === teamId;
+      const ft = /free throw/i.test(tt);
+      if (p.shootingPlay && !ft) ours ? b.tf++ : b.of++;
+      if (ft) ours ? b.tt++ : b.ot++;
+      if (TOV_TYPE_RE.test(tt)) ours ? b.tv++ : b.ov++;
+      if (/offensive rebound/i.test(tt)) ours ? b.to++ : b.oo++;
+      if (isSub(p)) {
+        const [inn, out] = (p.participants || []).map(x => String(x.athlete?.id));
+        const i = on.indexOf(out);
+        if (i >= 0 && inn) on[i] = inn;
+        else if (inn && !on.includes(inn)) {
+          warnings++;
+          if (on.length < 5) on.push(inn); else { const g = guessLeaving(list, k, inn); if (g) on[on.indexOf(g)] = inn; }
+        }
+      }
+    }
+    if (lastT > 0) bucket().sec += lastT;
+    prevEnd = on.slice();
+  }
+  return { lineups: agg, warnings, starters };
+}
+// Junta as formações de vários jogos e calcula o net rating de qualquer filtro
+function mergeLineups(games) {
+  const all = {};
+  for (const g of games) for (const [k, v] of Object.entries(g.lineups || {})) {
+    const t = all[k] || (all[k] = { sec: 0, pf: 0, pa: 0, tf: 0, tt: 0, tv: 0, to: 0, of: 0, ot: 0, ov: 0, oo: 0 });
+    for (const f in v) t[f] += v[f];
+  }
+  return Object.entries(all).map(([k, v]) => ({ ids: k.split(','), ...v }));
+}
+function ratingOf(rows) {
+  const t = { sec: 0, pf: 0, pa: 0, tf: 0, tt: 0, tv: 0, to: 0, of: 0, ot: 0, ov: 0, oo: 0 };
+  for (const r of rows) for (const f in t) t[f] += r[f];
+  const poss = 0.5 * ((t.tf + 0.44 * t.tt - t.to + t.tv) + (t.of + 0.44 * t.ot - t.oo + t.ov));
+  if (!(poss > 0)) return { min: t.sec / 60, poss: 0, ortg: null, drtg: null, net: null, pf: t.pf, pa: t.pa };
+  const ortg = 100 * t.pf / poss, drtg = 100 * t.pa / poss;
+  return { min: t.sec / 60, poss, ortg, drtg, net: ortg - drtg, pf: t.pf, pa: t.pa };
+}
+// Filtro: todos de "with" em quadra e nenhum de "without"
+function lineupFilter(rows, withIds = [], withoutIds = []) {
+  return rows.filter(r => withIds.every(id => r.ids.includes(id)) && !withoutIds.some(id => r.ids.includes(id)));
+}
+
+/* ===================== Aba Times: classificação ===================== */
+const DIVISIONS = {
+  Leste: { 'Atlântico': ['BOS', 'BKN', 'NY', 'PHI', 'TOR'], 'Central': ['CHI', 'CLE', 'DET', 'IND', 'MIL'], 'Sudeste': ['ATL', 'CHA', 'MIA', 'ORL', 'WSH'] },
+  Oeste: { 'Noroeste': ['DEN', 'MIN', 'OKC', 'POR', 'UTAH'], 'Pacífico': ['GS', 'LAC', 'LAL', 'PHX', 'SAC'], 'Sudoeste': ['DAL', 'HOU', 'MEM', 'NO', 'SA'] },
+};
+const divisionOf = abbr => { for (const [conf, ds] of Object.entries(DIVISIONS)) for (const [d, list] of Object.entries(ds)) if (list.includes(abbr)) return { conf, div: d }; return null; };
+async function loadStandings() {
+  return cached('nba-standings-v1', 15 * 60e3, async () => {
+    const st = await getAny('/apis/v2/sports/basketball/nba/standings');
+    return (st.children || []).map(c => {
+      const conf = /east/i.test(c.name || c.abbreviation) ? 'Leste' : 'Oeste';
+      const teams = (c.standings?.entries || []).map(e => {
+        const val = n => { const s = (e.stats || []).find(x => x.name === n || x.type === n); return s ? s.value : null; };
+        const disp = n => { const s = (e.stats || []).find(x => x.name === n || x.type === n); return s ? (s.displayValue ?? s.summary) : ''; };
+        return {
+          id: String(e.team?.id), abbr: e.team?.abbreviation, name: e.team?.displayName, logo: logoOf(e.team),
+          w: +val('wins') || 0, l: +val('losses') || 0, pct: +val('winPercent') || 0, seed: +val('playoffSeed') || 99,
+          gb: disp('gamesBehind'), streak: disp('streak'), home: disp('Home'), road: disp('Road'), diff: +val('differential') || 0,
+        };
+      }).sort((a, b) => a.seed - b.seed);
+      return { conf, teams };
+    });
+  });
+}
+// Jogos da temporada regular já encerrados de um time (mais antigo primeiro)
+async function loadTeamGames(teamId) {
+  return cached(`nba-team-games-v1-${teamId}`, 20 * 60e3, async () => {
+    const sch = await getAny(`/apis/site/v2/sports/basketball/nba/teams/${teamId}/schedule`);
+    return (sch.events || []).filter(e => e.competitions?.[0]?.status?.type?.completed && (e.seasonType?.type ?? 2) === 2)
+      .sort((a, b) => new Date(a.date) - new Date(b.date))
+      .map(e => {
+        const cs = e.competitions[0].competitors || [];
+        const me = cs.find(c => String(c.team?.id) === String(teamId)), op = cs.find(c => String(c.team?.id) !== String(teamId));
+        const sc = c => typeof c?.score === 'object' ? c.score.displayValue : c?.score;
+        return { id: String(e.id), date: e.date, win: !!me?.winner, home: me?.homeAway === 'home', opp: op?.team?.abbreviation || '', pts: sc(me), opts: sc(op) };
+      });
+  });
+}
+async function viewTeams() {
+  setTab('times'); stopPolling();
+  const token = ++renderToken;
+  app.innerHTML = `<div class="section-head"><div><div class="eyebrow">Temporada regular</div><h1>Classificação</h1></div></div>
+    <div class="std-pair"><div class="skeleton" style="height:520px"></div><div class="skeleton" style="height:520px"></div></div>`;
+  let confs;
+  try { confs = await loadStandings(); }
+  catch (e) { if (token === renderToken) showError(e, viewTeams); return; }
+  if (token !== renderToken) return;
+  let saved = {}; try { saved = JSON.parse(localStorage.getItem('nba-std-div') || '{}'); } catch (e) {}
+  const l10 = {}; // teamId -> lista de V/D
+  const confHtml = c => {
+    const div = saved[c.conf] || '';
+    let rows = c.teams.map((t, i) => ({ ...t, rank: i + 1 }));
+    if (div) {
+      rows = rows.filter(t => divisionOf(t.abbr)?.div === div).sort((a, b) => b.pct - a.pct || b.w - a.w);
+      const lead = rows[0];
+      rows.forEach((t, i) => { t.rank = i + 1; const g = ((lead.w - t.w) + (t.l - lead.l)) / 2; t.gb = g === 0 ? '-' : String(g).replace('.', ','); });
+    }
+    const zone = t => div ? '' : t.rank <= 6 ? 'z-po' : t.rank <= 10 ? 'z-pi' : '';
+    return `<section class="section std-conf">
+      <div class="section-head"><h2>Conferência ${c.conf}</h2>
+        <div class="seg seg-sm" role="radiogroup" aria-label="Divisão">${['', ...Object.keys(DIVISIONS[c.conf])].map(d => `<button type="button" role="radio" data-conf="${c.conf}" data-div="${esc(d)}" aria-checked="${d === div}">${d || 'Todas'}</button>`).join('')}</div></div>
+      <div class="table-wrap"><table class="std"><thead><tr><th>#&nbsp;&nbsp;Time</th><th>V</th><th>D</th><th>%</th><th>GB</th><th style="text-align:center">Últimos 10</th><th>Seq.</th></tr></thead>
+      <tbody>${rows.map(t => `<tr class="${zone(t)}">
+        <td><a class="team-link" href="#/time/${esc(t.id)}"><span class="rk">${t.rank}</span>${t.logo ? `<img src="${esc(t.logo)}" alt="" loading="lazy">` : ''}<span>${esc(t.name)}</span></a></td>
+        <td>${t.w}</td><td>${t.l}</td><td>${t.pct.toFixed(3).replace(/^0/, '').replace('.', ',')}</td><td>${esc(String(t.gb).replace('.', ','))}</td>
+        <td class="l10" data-l10="${esc(t.id)}">${l10[t.id] ? l10Html(l10[t.id]) : '<span class="muted">…</span>'}</td>
+        <td class="${/^W/.test(t.streak) ? 'res-w' : /^L/.test(t.streak) ? 'res-l' : ''}">${esc(String(t.streak).replace(/^W/, 'V').replace(/^L/, 'D'))}</td></tr>`).join('')}</tbody></table></div>
+    </section>`;
+  };
+  const l10Html = list => `<span class="vd">${list.map(w => `<i class="${w ? 'v' : 'd'}">${w ? 'V' : 'D'}</i>`).join('')}</span>`;
+  const draw = () => {
+    app.innerHTML = `<div class="section-head"><div><div class="eyebrow">Temporada regular · clique em um time para ver elenco e ON/OFF</div><h1>Classificação</h1></div></div>
+      <div class="std-pair">${confs.map(confHtml).join('')}</div>
+      <p class="note"><span class="zone-key z-po"></span> 1º–6º: vaga direta nos playoffs · <span class="zone-key z-pi"></span> 7º–10º: play-in. "Últimos 10" vai do jogo mais antigo (esquerda) ao mais recente (direita). Filtrando uma divisão, posição e GB são recalculados dentro dela.</p>`;
+    app.querySelectorAll('[data-div]').forEach(b => b.onclick = () => {
+      saved[b.dataset.conf] = b.dataset.div;
+      try { localStorage.setItem('nba-std-div', JSON.stringify(saved)); } catch (e) {}
+      draw();
+    });
+  };
+  draw();
+  // Últimos 10: um pedido por time, preenchendo as células conforme chegam
+  const all = confs.flatMap(c => c.teams);
+  await Promise.all(all.map(async t => {
+    try {
+      const g = await loadTeamGames(t.id);
+      l10[t.id] = g.slice(-10).map(x => x.win);
+      if (token !== renderToken) return;
+      const cell = app.querySelector(`[data-l10="${t.id}"]`);
+      if (cell) cell.innerHTML = l10Html(l10[t.id]);
+    } catch (e) {
+      const cell = app.querySelector(`[data-l10="${t.id}"]`);
+      if (cell) cell.innerHTML = '<span class="muted">—</span>';
+    }
+  }));
+}
+
+/* ===================== Página do time: elenco, estatísticas e ON/OFF ===================== */
+async function loadTeamLineups(teamId, games, onProgress) {
+  const out = [], names = {};
+  let done = 0, failed = 0;
+  const queue = [...games];
+  const work = async () => {
+    while (queue.length) {
+      const g = queue.shift();
+      const key = `nba-lu-v1-${g.id}-${teamId}`;
+      let rec = null;
+      try { rec = JSON.parse(localStorage.getItem(key) || 'null'); } catch (e) {}
+      if (!rec) {
+        try {
+          const s = await getJSON(`${API.site}/summary?event=${g.id}`);
+          const st = gameStints(s, teamId);
+          const nm = {};
+          for (const b of s.boxscore?.players || []) if (String(b.team?.id) === String(teamId))
+            for (const a of b.statistics?.[0]?.athletes || []) nm[String(a.athlete?.id)] = a.athlete?.shortName || a.athlete?.displayName;
+          rec = st ? { lineups: st.lineups, names: nm } : { lineups: {}, names: nm };
+          try { localStorage.setItem(key, JSON.stringify(rec)); } catch (e) {}
+        } catch (e) { failed++; }
+      }
+      if (rec) { out.push(rec); Object.assign(names, rec.names); }
+      onProgress?.(++done, games.length);
+    }
+  };
+  await Promise.all(Array.from({ length: 5 }, work));
+  return { rows: mergeLineups(out), names, failed };
+}
+async function viewTeam(teamId) {
+  setTab('times'); stopPolling();
+  const token = ++renderToken;
+  teamId = String(teamId);
+  app.innerHTML = `<div class="skeleton" style="height:120px"></div><div class="skeleton" style="height:380px"></div>`;
+  const [stdR, gamesR, seasonR, rosterR] = await Promise.allSettled([loadStandings(), loadTeamGames(teamId), prepareSeason(), loadAllPlayers()]);
+  if (token !== renderToken) return;
+  const confs = stdR.status === 'fulfilled' ? stdR.value : [];
+  const conf = confs.find(c => c.teams.some(t => t.id === teamId));
+  const team = conf?.teams.find(t => t.id === teamId) || (() => { const t = TEAMS.find(x => x.id === teamId); return t ? { id: t.id, abbr: t.abbreviation, name: t.displayName, logo: '' } : null; })();
+  if (!team) { app.innerHTML = `<div class="empty">Time não encontrado.</div>`; return; }
+  const rank = conf ? conf.teams.findIndex(t => t.id === teamId) + 1 : null;
+  const games = gamesR.status === 'fulfilled' ? gamesR.value : [];
+  const season = seasonR.status === 'fulfilled' ? seasonR.value : [];
+  const roster = rosterR.status === 'fulfilled' ? rosterR.value.players.filter(p => String(p.teamId) === teamId) : [];
+  const dv = divisionOf(team.abbr);
+
+  // Elenco + estatísticas da temporada
+  const statById = new Map(season.map(s => [s.id, s]));
+  const players = roster.map(p => ({ ...p, ...(statById.get(p.id) || {}), name: p.name, img: p.img, pos: p.pos, jersey: p.jersey }));
+  for (const s of season) if (String(s.teamId) === teamId && !players.some(p => p.id === s.id)) players.push({ ...s });
+
+  const last = games.slice(-10);
+  app.innerHTML = `<a href="#/times" class="plink muted">← Classificação</a>
+    <div class="team-hero">${team.logo ? `<img src="${esc(team.logo)}" alt="">` : ''}
+      <div style="display:grid;gap:6px;min-width:0"><div class="eyebrow">${rank ? `${rank}º no ${conf.conf}` : ''}${dv ? ` · Divisão ${dv.div}` : ''}</div>
+        <h1>${esc(team.name)}</h1>
+        <div class="team-facts">${team.w != null ? `<span><b>${team.w}-${team.l}</b> na temporada</span>` : ''}${team.home ? `<span>Casa ${esc(team.home)}</span><span>Fora ${esc(team.road)}</span>` : ''}
+          ${last.length ? `<span class="vd">${last.map(g => `<i class="${g.win ? 'v' : 'd'}" title="${g.home ? 'vs' : '@'} ${esc(g.opp)} ${esc(g.pts)}-${esc(g.opts)}">${g.win ? 'V' : 'D'}</i>`).join('')}</span>` : ''}</div></div></div>
+    <section class="section"><div class="section-head"><h2>Elenco</h2><span class="eyebrow">Médias da temporada · clique no título para ordenar</span></div><div id="team-roster"></div></section>
+    <section class="section" id="onoff"><div class="section-head"><div><h2>ON/OFF</h2><div class="eyebrow" style="margin-top:4px">Net rating do time com e sem cada jogador em quadra</div></div></div>
+      <div id="onoff-body"><div class="empty" id="onoff-prog">Lendo o play-by-play dos jogos do time…</div></div></section>`;
+
+  // Tabela do elenco (ordenável)
+  const RC = [
+    { k: 'gp', l: 'J', f: 0 }, { k: 'min', l: 'MIN', f: 1 }, { k: 'pts', l: 'PTS', f: 1 }, { k: 'reb', l: 'REB', f: 1 }, { k: 'ast', l: 'AST', f: 1 },
+    { k: 'stl', l: 'ROU', f: 1 }, { k: 'blk', l: 'TOC', f: 1 }, { k: 'to', l: 'ERR', f: 1 }, { k: 'fgPct', l: 'FG%', p: 1 }, { k: 'tpPct', l: '3P%', p: 1 },
+    { k: 'ftPct', l: 'FT%', p: 1 }, { k: 'ts', l: 'TS%', p: 1 }, { k: 'usg', l: 'USG%', p: 1 },
+    { k: 'onNet', l: 'NET ON', f: 1, net: 1, tip: 'Net rating do time (pontos a favor menos contra a cada 100 posses) com o jogador em quadra.' },
+    { k: 'offNet', l: 'NET OFF', f: 1, net: 1, tip: 'Net rating do time com o jogador fora de quadra (inclui jogos em que ele não jogou).' },
+    { k: 'onOff', l: 'ON−OFF', f: 1, net: 1, tip: 'Diferença entre o net rating com e sem o jogador. Positivo = o time rende mais com ele em quadra.' },
+  ];
+  const fm = (c, v) => v == null || !isFinite(v) ? '—' : c.p ? (v * 100).toFixed(1).replace('.', ',') + '%' : (c.net && v > 0 ? '+' : '') + v.toFixed(c.f).replace('.', ',');
+  let sortK = 'min', asc = false;
+  const drawRoster = () => {
+    const rows = [...players].sort((a, b) => { const x = a[sortK], y = b[sortK]; if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1; return asc ? x - y : y - x; });
+    document.getElementById('team-roster').innerHTML = `<div class="table-wrap"><table class="sortable"><thead><tr><th>Jogador</th>
+      ${RC.map(c => `<th data-k="${c.k}" class="${sortK === c.k ? 'hl' : ''}" ${c.tip ? `data-tip="${esc(c.tip)}"` : ''}>${c.l}${sortK === c.k ? (asc ? ' ▲' : ' ▼') : ''}</th>`).join('')}</tr></thead>
+      <tbody>${rows.map(p => `<tr><td><a class="plink" href="#/jogador/${esc(p.id)}">${esc(p.name)}</a> <span class="muted" style="font-size:11px">${esc(p.pos || '')}${p.jersey ? ' · #' + esc(p.jersey) : ''}</span></td>
+        ${RC.map(c => { const att = { fgPct: 'fga', tpPct: 'tpa', ftPct: 'fta' }[c.k]; const v = att && !p[att] ? null : p[c.k]; const cls = c.net && v != null ? (v > 0 ? 'net-pos' : v < 0 ? 'net-neg' : '') : ''; return `<td class="${sortK === c.k ? 'hl' : ''} ${cls}">${fm(c, v)}</td>`; }).join('')}</tr>`).join('')}</tbody></table></div>`;
+    document.querySelectorAll('#team-roster th[data-k]').forEach(th => th.onclick = () => { const k = th.dataset.k; if (sortK === k) asc = !asc; else { sortK = k; asc = false; } drawRoster(); });
+  };
+  drawRoster();
+
+  // ON/OFF
+  if (!games.length) { document.getElementById('onoff-body').innerHTML = `<div class="empty">O time ainda não tem jogos encerrados nesta temporada.</div>`; return; }
+  const lu = await loadTeamLineups(teamId, games, (d, n) => { const el = document.getElementById('onoff-prog'); if (el && token === renderToken) el.textContent = `Lendo o play-by-play… ${d} de ${n} jogos (só na primeira vez; depois fica salvo no navegador)`; });
+  if (token !== renderToken) return;
+  const rowsLU = lu.rows;
+  const teamR = ratingOf(rowsLU);
+  const name = id => lu.names[id] || players.find(p => p.id === id)?.name || id;
+  const used = [...new Set(rowsLU.flatMap(r => r.ids))];
+  const per = used.map(id => {
+    const on = ratingOf(lineupFilter(rowsLU, [id])), off = ratingOf(lineupFilter(rowsLU, [], [id]));
+    return { id, on, off, diff: on.net != null && off.net != null ? on.net - off.net : null };
+  }).sort((a, b) => b.on.min - a.on.min);
+  for (const x of per) { const p = players.find(q => q.id === x.id); if (p) { p.onNet = x.on.net; p.offNet = x.off.net; p.onOff = x.diff; } }
+  drawRoster();
+
+  const nf = (v, plus = true) => v == null || !isFinite(v) ? '—' : (plus && v > 0 ? '+' : '') + v.toFixed(1).replace('.', ',');
+  const netCls = v => v == null ? '' : v > 0 ? 'net-pos' : v < 0 ? 'net-neg' : '';
+  const small = min => min < 30 ? ' <span class="pill small-sample" data-tip="Menos de 30 minutos juntos: o número ainda oscila muito.">amostra pequena</span>' : '';
+
+  // Combinações: cada jogador alterna entre neutro → em quadra → fora
+  const byMin = per.map(x => x.id);
+  const combos = [
+    { on: byMin.slice(0, 2), off: [] },
+    { on: [byMin[0], byMin[2]].filter(Boolean), off: [] },
+  ];
+  const comboResult = c => ratingOf(lineupFilter(rowsLU, c.on, c.off));
+  const drawOnOff = () => {
+    const rA = comboResult(combos[0]), rB = comboResult(combos[1]);
+    const better = (a, b, low) => a == null || b == null || a === b ? '' : (low ? a < b : a > b) ? 'best' : '';
+    const panel = (c, i, r, o) => `<div class="combo">
+      <div class="combo-head"><h3>Combinação ${'AB'[i]}</h3><button class="btn sm" data-clear="${i}">Limpar</button></div>
+      <div class="chips">${byMin.map(id => { const st = c.on.includes(id) ? 'on' : c.off.includes(id) ? 'off' : ''; return `<button type="button" class="chip ${st}" data-combo="${i}" data-pid="${esc(id)}" aria-pressed="${!!st}">${esc(name(id))}</button>`; }).join('')}</div>
+      <p class="pg-note">${c.on.length || c.off.length ? `${c.on.length ? `<b>Em quadra:</b> ${c.on.map(name).map(esc).join(', ')}` : ''}${c.on.length && c.off.length ? ' · ' : ''}${c.off.length ? `<b>Fora:</b> ${c.off.map(name).map(esc).join(', ')}` : ''}` : 'Nenhum filtro: mostra o time inteiro.'}</p>
+      <div class="combo-stats">
+        <div class="${better(r.net, o.net)}"><span class="eyebrow" data-tip="Pontos a favor menos pontos contra, a cada 100 posses.">Net rating</span><b class="${netCls(r.net)}">${nf(r.net)}</b></div>
+        <div class="${better(r.ortg, o.ortg)}"><span class="eyebrow" data-tip="Pontos que o time marca a cada 100 posses.">Ataque (ORtg)</span><b>${nf(r.ortg, false)}</b></div>
+        <div class="${better(r.drtg, o.drtg, true)}"><span class="eyebrow" data-tip="Pontos que o time sofre a cada 100 posses. Menor é melhor.">Defesa (DRtg)</span><b>${nf(r.drtg, false)}</b></div>
+        <div><span class="eyebrow">Minutos</span><b>${r.min.toFixed(0)}</b>${small(r.min)}</div>
+        <div><span class="eyebrow">Placar no período</span><b>${r.pf}-${r.pa}</b></div>
+      </div></div>`;
+    const top = [...rowsLU].sort((a, b) => b.sec - a.sec).slice(0, 8);
+    document.getElementById('onoff-body').innerHTML = `
+      <div class="table-wrap"><table class="onoff-table"><thead><tr><th>Jogador</th><th data-tip="Minutos com o jogador em quadra nesta temporada.">MIN</th>
+        <th data-tip="Net rating do time com ele em quadra.">NET ON</th><th data-tip="Net rating do time com ele fora.">NET OFF</th><th data-tip="Diferença: quanto o time melhora (ou piora) com ele em quadra.">ON−OFF</th>
+        <th data-tip="Pontos marcados a cada 100 posses com ele em quadra.">ORtg ON</th><th data-tip="Pontos sofridos a cada 100 posses com ele em quadra. Menor é melhor.">DRtg ON</th></tr></thead>
+        <tbody>${per.map(x => `<tr class="${x.on.min < 30 ? 'low-sample' : ''}"><td><a class="plink" href="#/jogador/${esc(x.id)}">${esc(name(x.id))}</a></td><td>${x.on.min.toFixed(0)}</td>
+          <td class="${netCls(x.on.net)}">${nf(x.on.net)}</td><td class="${netCls(x.off.net)}">${nf(x.off.net)}</td>
+          <td class="${netCls(x.diff)}"><b>${nf(x.diff)}</b><div class="dbar" aria-hidden="true"><span class="${(x.diff || 0) < 0 ? 'neg2' : 'pos2'}" style="width:${Math.min(50, Math.abs(x.diff || 0) / 30 * 50)}%"></span></div></td>
+          <td>${nf(x.on.ortg, false)}</td><td>${nf(x.on.drtg, false)}</td></tr>`).join('')}</tbody></table></div>
+      <p class="note">Linhas esmaecidas: menos de 30 minutos em quadra, amostra ainda pequena demais para conclusões. Time na temporada: net rating <b class="${netCls(teamR.net)}">${nf(teamR.net)}</b> em ${teamR.min.toFixed(0)} minutos (${games.length - lu.failed} jogos). Calculado a partir do play-by-play da ESPN, reconstruindo quem estava em quadra a cada momento.${lu.failed ? ` ${lu.failed} jogo(s) não carregaram; recarregue para tentar de novo.` : ''}</p>
+
+      <div class="section-head" style="margin-top:8px"><div><h3>Comparar combinações</h3><div class="pg-note" style="margin-top:4px">Clique em um jogador: 1× = <span class="chip on demo">em quadra</span> · 2× = <span class="chip off demo">fora</span> · 3× = sem filtro</div></div></div>
+      <div class="combo-pair">${panel(combos[0], 0, rA, rB)}${panel(combos[1], 1, rB, rA)}</div>
+
+      <div class="section-head" style="margin-top:8px"><h3>Formações mais usadas</h3><span class="eyebrow">Quinteto em quadra</span></div>
+      <div class="table-wrap"><table class="onoff-table"><thead><tr><th>Quinteto</th><th>MIN</th><th>NET</th><th>ORtg</th><th>DRtg</th><th>Placar</th></tr></thead>
+        <tbody>${top.map(r => { const x = ratingOf([r]); return `<tr><td style="white-space:normal;min-width:260px">${r.ids.map(name).map(esc).join(' · ')}</td><td>${x.min.toFixed(0)}</td>
+          <td class="${netCls(x.net)}">${nf(x.net)}</td><td>${nf(x.ortg, false)}</td><td>${nf(x.drtg, false)}</td><td>${x.pf}-${x.pa}</td></tr>`; }).join('')}</tbody></table></div>`;
+    document.querySelectorAll('[data-combo]').forEach(b => b.onclick = () => {
+      const c = combos[+b.dataset.combo], id = b.dataset.pid;
+      if (c.on.includes(id)) { c.on = c.on.filter(x => x !== id); if (c.on.length + c.off.length < 10) c.off.push(id); }
+      else if (c.off.includes(id)) c.off = c.off.filter(x => x !== id);
+      else if (c.on.length < 5) c.on.push(id);
+      drawOnOff();
+    });
+    document.querySelectorAll('[data-clear]').forEach(b => b.onclick = () => { combos[+b.dataset.clear] = { on: [], off: [] }; drawOnOff(); });
+  };
+  drawOnOff();
+}
+
 /* ===================== Página: Diagnóstico ===================== */
 async function viewDiag() {
   setTab(''); stopPolling();
@@ -2081,6 +2498,8 @@ function route() {
     case 'jogador': return viewPlayer(parts[1]);
     case 'diagnostico': return viewDiag();
     case 'comparar': return viewCompare(parts[1], parts[2]);
+    case 'times': return viewTeams();
+    case 'time': return viewTeam(parts[1]);
     case 'jogos': default: return viewGames(parts[0] === 'jogos' ? parts[1] : undefined);
   }
 }
