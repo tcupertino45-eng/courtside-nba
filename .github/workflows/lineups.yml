@@ -1,0 +1,32 @@
+# Todo dia, monta o ON/OFF a partir do play-by-play oficial da NBA (cdn.nba.com)
+# e salva em data/lineups.json. Também roda na hora pela aba Actions.
+name: Atualizar ON/OFF (play-by-play oficial)
+
+on:
+  schedule:
+    - cron: "41 9 * * *"   # 06:41 em Brasília, depois do fim dos jogos da noite
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  atualizar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Montar formações a partir do play-by-play oficial
+        run: python scripts/fetch_lineups.py
+      - name: Salvar no repositório (só se algo mudou)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git add data/lineups.json
+          git diff --cached --quiet && echo "Sem mudanças." && exit 0
+          git commit -m "Atualiza ON/OFF ($(date -u +%Y-%m-%d))"
+          git pull --rebase --autostash
+          git push
