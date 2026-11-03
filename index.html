@@ -29,6 +29,7 @@
   --gold-text: #9a6d00;
   --sky: #9fd3fa;         /* azul claro: botão Comparar e aviso de jogo hoje */
   --sky-ink: #0b2a44;
+  --sky-text: #1d6fa8;     /* azul claro legível como texto no tema claro */
   --font-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
   --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-data: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;  /* números e rótulos: mesma família do texto, com algarismos tabulares */
@@ -39,13 +40,13 @@
   :root:not([data-theme="light"]) {
     --bg: #101216; --surface: #181b21; --ink: #eceae4; --muted: #9a9fab; --line: #2a2e37;
     --accent: #f07a3c; --accent-ink: #101216; --live: #ff5468; --good: #4fc58a;
-    --led: #07080a; --led-text: #ffbe5c; --above: #5c9ae6; --below: #ff6a55; --court: #14171c; --gold: #e8b84a; --gold-ink: #241800; --gold-text: #f0c86a; --sky: #7cc3f2; --sky-ink: #06192a; color-scheme: dark;
+    --led: #07080a; --led-text: #ffbe5c; --above: #5c9ae6; --below: #ff6a55; --court: #14171c; --gold: #e8b84a; --gold-ink: #241800; --gold-text: #f0c86a; --sky: #7cc3f2; --sky-ink: #06192a; --sky-text: #7cc3f2; color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #101216; --surface: #181b21; --ink: #eceae4; --muted: #9a9fab; --line: #2a2e37;
   --accent: #f07a3c; --accent-ink: #101216; --live: #ff5468; --good: #4fc58a;
-  --led: #07080a; --led-text: #ffbe5c; --above: #5c9ae6; --below: #ff6a55; --court: #14171c; --gold: #e8b84a; --gold-ink: #241800; --gold-text: #f0c86a; --sky: #7cc3f2; --sky-ink: #06192a; color-scheme: dark;
+  --led: #07080a; --led-text: #ffbe5c; --above: #5c9ae6; --below: #ff6a55; --court: #14171c; --gold: #e8b84a; --gold-ink: #241800; --gold-text: #f0c86a; --sky: #7cc3f2; --sky-ink: #06192a; --sky-text: #7cc3f2; color-scheme: dark;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; }
@@ -101,8 +102,8 @@ input[type="search"], select {
 
 /* Pílulas de estado */
 .pill { display: inline-flex; align-items: center; gap: 6px; font: 600 11px/1 var(--font-data); letter-spacing: .04em; text-transform: uppercase; padding: 5px 8px; border-radius: 99px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
-.pill.live { color: var(--live); border-color: var(--live); }
-.pill.live::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--live); animation: pulse 1.4s infinite; }
+.pill.live { color: var(--sky-ink); background: var(--sky); border-color: var(--sky); }
+.pill.live::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--sky-ink); animation: pulse 1.4s infinite; }
 @keyframes pulse { 50% { opacity: .25; } }
 @media (prefers-reduced-motion: reduce) { .pill.live::before { animation: none; } }
 
@@ -113,21 +114,21 @@ input[type="search"], select {
   border-radius: 10px; text-decoration: none;
 }
 .game:hover { border-color: var(--ink); }
-.game.is-live { border-color: var(--live); }
+.game.is-live { border: 2px solid var(--sky); padding: 13px 15px; }
 /* Destaques: clutch (vermelho, pulsante) e top 4 (dourado, estático) */
 .game.is-top4 { border-color: var(--gold); background: linear-gradient(180deg, color-mix(in srgb, var(--gold) 10%, var(--surface)), var(--surface) 55%); }
 .flag-top4 { justify-self: start; font: 700 11px/1 var(--font-data); letter-spacing: .06em; text-transform: uppercase; color: var(--gold-ink); background: var(--gold); padding: 5px 9px; border-radius: 4px; }
 .team-row .seed { display: block; margin-top: 1px; font: 600 11px/1.2 var(--font-data); color: var(--gold-text); }
-.game.is-clutch { border: 2px solid var(--live); padding: 13px 15px; box-shadow: 0 0 0 0 color-mix(in srgb, var(--live) 45%, transparent); animation: clutchRing 1.6s ease-out infinite; }
-.flag-clutch { display: flex; align-items: center; gap: 8px; margin: -13px -15px 0; padding: 8px 16px; border-radius: 8px 8px 0 0; background: var(--live); color: #fff; font: 800 13px/1 var(--font-display); letter-spacing: .08em; }
-.flag-clutch .dot { width: 8px; height: 8px; border-radius: 50%; background: #fff; animation: pulse 1s infinite; }
+.game.is-clutch { border: 2px solid var(--accent); padding: 13px 15px; box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 45%, transparent); animation: clutchRing 1.6s ease-out infinite; }
+.flag-clutch { display: flex; align-items: center; gap: 8px; margin: -13px -15px 0; padding: 8px 16px; border-radius: 8px 8px 0 0; background: var(--accent); color: var(--accent-ink); font: 800 13px/1 var(--font-display); letter-spacing: .08em; }
+.flag-clutch .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent-ink); animation: pulse 1s infinite; }
 .flag-clutch .flag-sub { margin-left: auto; font: 600 11px var(--font-data); letter-spacing: .02em; opacity: .9; }
 .game.is-clutch.is-top4 .flag-top4 { margin-top: 2px; }
-@keyframes clutchRing { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--live) 45%, transparent); } 100% { box-shadow: 0 0 0 10px transparent; } }
+@keyframes clutchRing { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 50%, transparent); } 100% { box-shadow: 0 0 0 10px transparent; } }
 @media (prefers-reduced-motion: reduce) { .game.is-clutch, .flag-clutch .dot { animation: none; } }
 .hl-legend { display: flex; flex-wrap: wrap; gap: 8px; }
 .hl-chip { font: 600 12px var(--font-data); padding: 6px 10px; border-radius: 99px; }
-.hl-chip.clutch { background: var(--live); color: #fff; }
+.hl-chip.clutch { background: var(--accent); color: var(--accent-ink); }
 .hl-chip.top4 { background: var(--gold); color: var(--gold-ink); }
 .game-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .team-row { display: grid; grid-template-columns: 32px 1fr auto; align-items: center; gap: 10px; }
@@ -149,7 +150,7 @@ input[type="search"], select {
 .board .mid { display: grid; justify-items: center; gap: 8px; text-align: center; }
 .board .clock { font: 600 16px var(--font-led); color: #f4f1ea; }
 .board .pill { border-color: #4a4f5a; color: #c9c6be; }
-.board .pill.live { border-color: var(--live); color: #ff7d8c; }
+.board .pill.live { border-color: var(--sky); background: var(--sky); color: var(--sky-ink); }
 
 /* Tabelas */
 .table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
@@ -521,7 +522,7 @@ async function viewGames(dateStr, silent) {
 function gamesShell(date, live = 0, total = null) {
   const isToday = ymd(date) === ymd(new Date());
   return `<div class="section-head">
-    <div><div class="eyebrow">${isToday ? 'Hoje' : 'Rodada'} ${total != null ? `· ${total} jogo${total === 1 ? '' : 's'}` : ''} ${live ? `· <span style="color:var(--live)">${live} ao vivo</span>` : ''}</div>
+    <div><div class="eyebrow">${isToday ? 'Hoje' : 'Rodada'} ${total != null ? `· ${total} jogo${total === 1 ? '' : 's'}` : ''} ${live ? `· <span style="color:var(--sky-text)">${live} ao vivo</span>` : ''}</div>
     <h1>${esc(fmtDay(date))}</h1></div>
     <div class="toolbar">
       <button class="btn" id="prev" aria-label="Dia anterior">←</button>
