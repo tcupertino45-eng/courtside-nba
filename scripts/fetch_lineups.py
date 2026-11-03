@@ -5,8 +5,7 @@ Acumula em data/lineups.json; a cada execução processa só os jogos que faltam
 import datetime as dt, gzip, json, os, re, sys, time, urllib.request
 
 CDN = "https://cdn.nba.com/static/json"
-HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
-           "Accept": "application/json", "Accept-Encoding": "gzip", "Origin": "https://www.nba.com", "Referer": "https://www.nba.com/"}
+HEADERS = {"User-Agent": "Mozilla/5.0", "Accept": "*/*"}
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "lineups.json")
 
 
