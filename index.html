@@ -24,6 +24,9 @@
   --above: #2b66b0;       /* zona acima da média da liga */
   --below: #c9362b;       /* zona abaixo da média */
   --court: #fbfaf7;       /* piso do mapa de arremessos */
+  --gold: #e3b341;         /* duelo de top 4 */
+  --gold-ink: #2b1d00;
+  --gold-text: #9a6d00;
   --sky: #9fd3fa;         /* azul claro: botão Comparar e aviso de jogo hoje */
   --sky-ink: #0b2a44;
   --font-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
@@ -36,13 +39,13 @@
   :root:not([data-theme="light"]) {
     --bg: #101216; --surface: #181b21; --ink: #eceae4; --muted: #9a9fab; --line: #2a2e37;
     --accent: #f07a3c; --accent-ink: #101216; --live: #ff5468; --good: #4fc58a;
-    --led: #07080a; --led-text: #ffbe5c; --above: #5c9ae6; --below: #ff6a55; --court: #14171c; --sky: #7cc3f2; --sky-ink: #06192a; color-scheme: dark;
+    --led: #07080a; --led-text: #ffbe5c; --above: #5c9ae6; --below: #ff6a55; --court: #14171c; --gold: #e8b84a; --gold-ink: #241800; --gold-text: #f0c86a; --sky: #7cc3f2; --sky-ink: #06192a; color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #101216; --surface: #181b21; --ink: #eceae4; --muted: #9a9fab; --line: #2a2e37;
   --accent: #f07a3c; --accent-ink: #101216; --live: #ff5468; --good: #4fc58a;
-  --led: #07080a; --led-text: #ffbe5c; --above: #5c9ae6; --below: #ff6a55; --court: #14171c; --sky: #7cc3f2; --sky-ink: #06192a; color-scheme: dark;
+  --led: #07080a; --led-text: #ffbe5c; --above: #5c9ae6; --below: #ff6a55; --court: #14171c; --gold: #e8b84a; --gold-ink: #241800; --gold-text: #f0c86a; --sky: #7cc3f2; --sky-ink: #06192a; color-scheme: dark;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; }
@@ -111,6 +114,21 @@ input[type="search"], select {
 }
 .game:hover { border-color: var(--ink); }
 .game.is-live { border-color: var(--live); }
+/* Destaques: clutch (vermelho, pulsante) e top 4 (dourado, estático) */
+.game.is-top4 { border-color: var(--gold); background: linear-gradient(180deg, color-mix(in srgb, var(--gold) 10%, var(--surface)), var(--surface) 55%); }
+.flag-top4 { justify-self: start; font: 700 11px/1 var(--font-data); letter-spacing: .06em; text-transform: uppercase; color: var(--gold-ink); background: var(--gold); padding: 5px 9px; border-radius: 4px; }
+.team-row .seed { display: block; margin-top: 1px; font: 600 11px/1.2 var(--font-data); color: var(--gold-text); }
+.game.is-clutch { border: 2px solid var(--live); padding: 13px 15px; box-shadow: 0 0 0 0 color-mix(in srgb, var(--live) 45%, transparent); animation: clutchRing 1.6s ease-out infinite; }
+.flag-clutch { display: flex; align-items: center; gap: 8px; margin: -13px -15px 0; padding: 8px 16px; border-radius: 8px 8px 0 0; background: var(--live); color: #fff; font: 800 13px/1 var(--font-display); letter-spacing: .08em; }
+.flag-clutch .dot { width: 8px; height: 8px; border-radius: 50%; background: #fff; animation: pulse 1s infinite; }
+.flag-clutch .flag-sub { margin-left: auto; font: 600 11px var(--font-data); letter-spacing: .02em; opacity: .9; }
+.game.is-clutch.is-top4 .flag-top4 { margin-top: 2px; }
+@keyframes clutchRing { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--live) 45%, transparent); } 100% { box-shadow: 0 0 0 10px transparent; } }
+@media (prefers-reduced-motion: reduce) { .game.is-clutch, .flag-clutch .dot { animation: none; } }
+.hl-legend { display: flex; flex-wrap: wrap; gap: 8px; }
+.hl-chip { font: 600 12px var(--font-data); padding: 6px 10px; border-radius: 99px; }
+.hl-chip.clutch { background: var(--live); color: #fff; }
+.hl-chip.top4 { background: var(--gold); color: var(--gold-ink); }
 .game-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .team-row { display: grid; grid-template-columns: 32px 1fr auto; align-items: center; gap: 10px; }
 .team-row img { width: 32px; height: 32px; object-fit: contain; }
@@ -431,6 +449,40 @@ const statusPill = (status) => {
 };
 
 /* ===================== Página: Jogos do dia ===================== */
+/* ===================== Destaques: Clutch Time e duelo de top 4 ===================== */
+// Clutch time (definição da NBA): últimos 5 minutos do 4º período ou de uma prorrogação, com diferença de 5 pontos ou menos.
+function clockSeconds(status) {
+  if (isFinite(status?.clock)) return +status.clock;
+  const m = String(status?.displayClock || '').match(/^(\d+):(\d+(?:\.\d+)?)$/);
+  return m ? +m[1] * 60 + +m[2] : (/^\d+(\.\d+)?$/.test(status?.displayClock || '') ? +status.displayClock : null);
+}
+function isClutch(ev) {
+  const status = ev.status || ev.competitions?.[0]?.status;
+  if (stateOf(status) !== 'in') return false;
+  const period = status?.period || 0, secs = clockSeconds(status);
+  if (period < 4 || secs == null || secs > 300) return false;
+  const sc = (ev.competitions?.[0]?.competitors || []).map(c => +c.score || 0);
+  return sc.length === 2 && Math.abs(sc[0] - sc[1]) <= 5;
+}
+// Top 4 de cada conferência, pela classificação atual da ESPN (cache de 30 min)
+async function loadTopSeeds() {
+  return cached('nba-top4-v1', 30 * 60e3, async () => {
+    const st = await getAny('/apis/v2/sports/basketball/nba/standings');
+    const out = {};
+    for (const conf of st.children || []) {
+      const conf_pt = /east/i.test(conf.name || conf.abbreviation) ? 'Leste' : 'Oeste';
+      const stat = (e, n) => { const s = (e.stats || []).find(x => x.name === n || x.type === n); return s ? +s.value : null; };
+      const rows = (conf.standings?.entries || []).map(e => ({
+        id: String(e.team?.id), seed: stat(e, 'playoffSeed'), pct: stat(e, 'winPercent') ?? 0, gb: stat(e, 'gamesBehind') ?? 99,
+      }));
+      const hasSeed = rows.every(r => r.seed > 0);
+      rows.sort((a, b) => hasSeed ? a.seed - b.seed : b.pct - a.pct || a.gb - b.gb);
+      rows.slice(0, 4).forEach((r, i) => { out[r.id] = { seed: i + 1, conf: conf_pt }; });
+    }
+    if (Object.keys(out).length < 8) throw new Error('classificação incompleta');
+    return out;
+  });
+}
 async function viewGames(dateStr, silent) {
   setTab('jogos');
   const token = ++renderToken;
@@ -438,19 +490,31 @@ async function viewGames(dateStr, silent) {
   const key = ymd(date);
   if (!silent) app.innerHTML = gamesShell(date) + `<div class="games">${'<div class="skeleton"></div>'.repeat(6)}</div>`;
   let data;
+  const seedsP = loadTopSeeds().catch(() => null);
   try { data = await getJSON(`${API.site}/scoreboard?dates=${key}`); }
   catch (e) { if (token === renderToken) showError(e, () => viewGames(dateStr)); return; }
   if (token !== renderToken) return;
 
+  const seeds = await seedsP;
+  if (token !== renderToken) return;
   const events = data.events || [];
   const live = events.filter(e => stateOf(e.status) === 'in').length;
+  const isTop4 = ev => !!seeds && (ev.competitions?.[0]?.competitors || []).length === 2
+    && ev.competitions[0].competitors.every(c => seeds[String(c.team?.id)]);
+  for (const ev of events) { ev._clutch = isClutch(ev); ev._top4 = isTop4(ev); }
+  const clutchN = events.filter(e => e._clutch).length, top4N = events.filter(e => e._top4).length;
+  // Ordem: em clutch → ao vivo → a seguir → encerrados; dentro de cada grupo, duelos de top 4 primeiro
   const order = { in: 0, pre: 1, post: 2 };
-  events.sort((a, b) => (order[stateOf(a.status)] ?? 3) - (order[stateOf(b.status)] ?? 3) || new Date(a.date) - new Date(b.date));
+  events.sort((a, b) => (b._clutch - a._clutch) || (order[stateOf(a.status)] ?? 3) - (order[stateOf(b.status)] ?? 3)
+    || (b._top4 - a._top4) || new Date(a.date) - new Date(b.date));
+  const card = ev => gameCard(ev, seeds);
 
   app.innerHTML = gamesShell(date, live, events.length) + (events.length
-    ? `<div class="games">${events.map(gameCard).join('')}</div>`
+    ? (clutchN || top4N ? `<div class="hl-legend">${clutchN ? `<span class="hl-chip clutch">Clutch time · ${clutchN} jogo${clutchN > 1 ? 's' : ''} agora</span>` : ''}${top4N ? `<span class="hl-chip top4">★ Duelo de top 4 · ${top4N} jogo${top4N > 1 ? 's' : ''}</span>` : ''}</div>` : '')
+      + `<div class="games">${events.map(card).join('')}</div>`
     : `<div class="empty">Nenhum jogo nesta data. Use as setas para navegar entre os dias.</div>`)
-    + `<p class="note">Horários no seu fuso. ${live ? `Placar atualiza sozinho a cada ${LIVE_REFRESH_MS/1000} s.` : ''} Clique num jogo para ver o box score.</p>`;
+    + `<p class="note">Horários no seu fuso. ${live ? `Placar atualiza sozinho a cada ${LIVE_REFRESH_MS/1000} s.` : ''} Clique num jogo para ver o box score.</p>
+    <p class="note"><b>Clutch time</b>: últimos 5 minutos do 4º período ou da prorrogação, com diferença de até 5 pontos. <b>★ Duelo de top 4</b>: os dois times estão entre os 4 primeiros da sua conferência na classificação atual.${seeds ? '' : ' (A classificação não carregou agora, então os duelos de top 4 não foram marcados.)'}</p>`;
   bindDateNav(date);
   if (live) poll(() => viewGames(dateStr, true)); else stopPolling();
 }
@@ -474,7 +538,7 @@ function bindDateNav(date) {
   document.getElementById('today').onclick = () => { location.hash = '#/jogos'; };
   document.getElementById('pick').onchange = e => { if (e.target.value) go(new Date(e.target.value + 'T12:00')); };
 }
-function gameCard(ev) {
+function gameCard(ev, seeds) {
   const comp = ev.competitions?.[0] || {};
   const st = stateOf(ev.status);
   const cs = [...(comp.competitors || [])].sort(a => a.homeAway === 'away' ? -1 : 1);
@@ -483,13 +547,16 @@ function gameCard(ev) {
     const lost = st === 'post' && scores[i] < Math.max(...scores);
     return `<div class="team-row ${lost ? 'lost' : ''}">
       <img src="${esc(logoOf(c.team))}" alt="" loading="lazy">
-      <div class="name">${esc(c.team?.displayName)}<span class="rec">${esc(c.records?.[0]?.summary || '')}</span></div>
+      <div class="name">${esc(c.team?.displayName)}<span class="rec">${esc(c.records?.[0]?.summary || '')}</span>${ev._top4 && seeds?.[String(c.team?.id)] ? `<span class="seed">${seeds[String(c.team.id)].seed}º ${seeds[String(c.team.id)].conf}</span>` : ''}</div>
       <div class="score">${st === 'pre' ? '' : esc(c.score)}</div></div>`;
   }).join('');
   const tv = comp.broadcasts?.flatMap(b => b.names || []).slice(0, 2).join(', ');
   const right = st === 'pre' ? `<span class="num muted">${fmtTime(ev.date)}</span>` : '';
-  return `<a class="game ${st === 'in' ? 'is-live' : ''}" href="#/jogo/${esc(ev.id)}">
-    <div class="game-head">${statusPill(ev.status)}${right}</div>${rows}
+  const diff = Math.abs(scores[0] - scores[1]);
+  const flags = (ev._clutch ? `<div class="flag-clutch"><span class="dot" aria-hidden="true"></span>CLUTCH TIME<span class="flag-sub">${diff === 0 ? 'empatado' : `diferença de ${diff}`}</span></div>` : '')
+    + (ev._top4 ? `<div class="flag-top4">★ Duelo de top 4</div>` : '');
+  return `<a class="game ${st === 'in' ? 'is-live' : ''} ${ev._clutch ? 'is-clutch' : ''} ${ev._top4 ? 'is-top4' : ''}" href="#/jogo/${esc(ev.id)}">
+    ${flags}<div class="game-head">${statusPill(ev.status)}${right}</div>${rows}
     ${tv ? `<div class="eyebrow">TV · ${esc(tv)}</div>` : ''}</a>`;
 }
 
