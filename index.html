@@ -2226,13 +2226,16 @@ function mergeLineups(games) {
   }
   return Object.entries(all).map(([k, v]) => ({ ids: k.split(','), ...v }));
 }
+const estPoss = r => 0.5 * (((r.tf || 0) + 0.44 * (r.tt || 0) - (r.to || 0) + (r.tv || 0)) + ((r.of || 0) + 0.44 * (r.ot || 0) - (r.oo || 0) + (r.ov || 0)));
 function ratingOf(rows) {
-  const t = { sec: 0, pf: 0, pa: 0, tf: 0, tt: 0, tv: 0, to: 0, of: 0, ot: 0, ov: 0, oo: 0 };
-  for (const r of rows) for (const f in t) t[f] += r[f];
-  const poss = 0.5 * ((t.tf + 0.44 * t.tt - t.to + t.tv) + (t.of + 0.44 * t.ot - t.oo + t.ov));
-  if (!(poss > 0)) return { min: t.sec / 60, poss: 0, ortg: null, drtg: null, net: null, pf: t.pf, pa: t.pa };
-  const ortg = 100 * t.pf / poss, drtg = 100 * t.pa / poss;
-  return { min: t.sec / 60, poss, ortg, drtg, net: ortg - drtg, pf: t.pf, pa: t.pa };
+  let sec = 0, pf = 0, pa = 0, pF = 0, pA = 0;
+  for (const r of rows) {
+    sec += r.sec; pf += r.pf; pa += r.pa;
+    if (r.pF != null) { pF += r.pF; pA += r.pA; } else { const e = estPoss(r); pF += e; pA += e; } // oficial: posses contadas; ESPN: estimadas
+  }
+  if (!(pF > 0) || !(pA > 0)) return { min: sec / 60, poss: 0, ortg: null, drtg: null, net: null, pf, pa };
+  const ortg = 100 * pf / pF, drtg = 100 * pa / pA;
+  return { min: sec / 60, poss: (pF + pA) / 2, ortg, drtg, net: ortg - drtg, pf, pa };
 }
 // Filtro: todos de "with" em quadra e nenhum de "without"
 function lineupFilter(rows, withIds = [], withoutIds = []) {
@@ -2337,6 +2340,50 @@ async function viewTeams() {
 }
 
 /* ===================== Página do time: elenco, estatísticas e ON/OFF ===================== */
+/* ON/OFF oficial: data/lineups.json, gerado todo dia no computador do usuário (scripts/fetch_lineups.py)
+   a partir do play-by-play da NBA.com, com posses contadas jogada a jogada. */
+const NBA_TRI = { GS: 'GSW', NO: 'NOP', NY: 'NYK', SA: 'SAS', UTAH: 'UTA', WSH: 'WAS' };
+let officialLU = null;
+function loadOfficialLineups() {
+  return officialLU || (officialLU = fetch('data/lineups.json', { cache: 'no-cache' }).then(r => r.ok ? r.json() : null).catch(() => null));
+}
+const etDate = iso => new Date(iso).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+// Junta formações iguais vindas das duas fontes
+function mergeRows(rows) {
+  const m = new Map();
+  for (const r of rows) {
+    const k = [...r.ids].sort().join(','), e = r.pF != null ? null : estPoss(r);
+    const t = m.get(k) || { ids: [...r.ids].sort(), sec: 0, pf: 0, pa: 0, pF: 0, pA: 0 };
+    t.sec += r.sec; t.pf += r.pf; t.pa += r.pa; t.pF += r.pF ?? e; t.pA += r.pA ?? e;
+    m.set(k, t);
+  }
+  return [...m.values()];
+}
+// Oficial quando houver; jogos ainda não processados (ex.: da noite anterior, antes da coleta diária) vêm da ESPN
+async function buildTeamLineups(team, games, players, allPlayers, onProgress) {
+  const off = await loadOfficialLineups();
+  const t = off?.teams?.[NBA_TRI[team.abbr] || team.abbr];
+  if (!t) { const lu = await loadTeamLineups(team.id, games, onProgress); return { ...lu, source: 'espn', espnGames: games.length - lu.failed }; }
+  // Liga os IDs da NBA aos jogadores da ESPN pelo nome (elenco do time primeiro, depois a liga toda)
+  const idMap = {}, names = {}, taken = new Set();
+  for (const [nid, full] of Object.entries(t.names || {})) {
+    const k = normName(full), free = x => normName(x.name) === k && !taken.has(x.id);
+    const p = players.find(free) || allPlayers.find(free);
+    const id = p ? p.id : 'nba:' + nid;
+    if (p) taken.add(p.id);
+    idMap[nid] = id; names[id] = full;
+  }
+  let rows = Object.entries(t.lu || {}).map(([k, v]) => ({ ids: k.split(',').map(n => idMap[n] || 'nba:' + n), sec: v[0], pf: v[1], pa: v[2], pF: v[3], pA: v[4] }));
+  const have = new Map(); for (const d of t.dates || []) have.set(d, (have.get(d) || 0) + 1);
+  const missing = games.filter(g => { const d = etDate(g.date); if (have.get(d)) { have.set(d, have.get(d) - 1); return false; } return true; });
+  let espnGames = 0, failed = 0;
+  if (missing.length) {
+    const lu = await loadTeamLineups(team.id, missing, onProgress);
+    rows = rows.concat(lu.rows); Object.assign(names, Object.fromEntries(Object.entries(lu.names).filter(([k]) => !names[k])));
+    espnGames = missing.length - lu.failed; failed = lu.failed;
+  }
+  return { rows: mergeRows(rows), names, failed, source: 'oficial', officialGames: (t.dates || []).length, espnGames, updated: off.updated };
+}
 async function loadTeamLineups(teamId, games, onProgress) {
   const out = [], names = {};
   let done = 0, failed = 0;
@@ -2424,7 +2471,8 @@ async function viewTeam(teamId) {
 
   // ON/OFF
   if (!games.length) { document.getElementById('onoff-body').innerHTML = `<div class="empty">O time ainda não tem jogos encerrados nesta temporada.</div>`; return; }
-  const lu = await loadTeamLineups(teamId, games, (d, n) => { const el = document.getElementById('onoff-prog'); if (el && token === renderToken) el.textContent = `Lendo o play-by-play… ${d} de ${n} jogos (só na primeira vez; depois fica salvo no navegador)`; });
+  const allPlayers = rosterR.status === 'fulfilled' ? rosterR.value.players : [];
+  const lu = await buildTeamLineups(team, games, players, allPlayers, (d, n) => { const el = document.getElementById('onoff-prog'); if (el && token === renderToken) el.textContent = `Lendo o play-by-play… ${d} de ${n} jogos (só na primeira vez; depois fica salvo no navegador)`; });
   if (token !== renderToken) return;
   const rowsLU = lu.rows;
   const teamR = ratingOf(rowsLU);
@@ -2487,7 +2535,7 @@ async function viewTeam(teamId) {
           <td class="${netCls(x.on.net)}">${nf(x.on.net)}</td><td class="${netCls(x.off.net)}">${nf(x.off.net)}</td>
           <td class="${netCls(x.diff)}"><b>${nf(x.diff)}</b><div class="dbar" aria-hidden="true"><span class="${(x.diff || 0) < 0 ? 'neg2' : 'pos2'}" style="width:${Math.min(50, Math.abs(x.diff || 0) / 30 * 50)}%"></span></div></td>
           <td>${nf(x.on.ortg, false)}</td><td>${nf(x.on.drtg, false)}</td></tr>`).join('')}</tbody></table></div>
-      <p class="note">Linhas esmaecidas: menos de 30 minutos em quadra, amostra ainda pequena para conclusões. Time na temporada: ORTG ${nf(teamR.ortg, false)}, DRTG ${nf(teamR.drtg, false)}, net rating <b class="${netCls(teamR.net)}">${nf(teamR.net)}</b> em ${teamR.min.toFixed(0)} minutos (${games.length - lu.failed} jogos). Calculado a partir do play-by-play da ESPN, reconstruindo quem estava em quadra a cada momento.${lu.failed ? ` ${lu.failed} jogo(s) não carregaram; recarregue para tentar de novo.` : ''}</p>
+      <p class="note">Linhas esmaecidas: menos de 30 minutos em quadra, amostra ainda pequena para conclusões. Time na temporada: ORTG ${nf(teamR.ortg, false)}, DRTG ${nf(teamR.drtg, false)}, net rating <b class="${netCls(teamR.net)}">${nf(teamR.net)}</b> em ${teamR.min.toFixed(0)} minutos (${games.length - lu.failed} jogos). ${lu.source === 'oficial' ? `Fonte: play-by-play oficial da NBA, com posses contadas jogada a jogada (${lu.officialGames} jogos, atualizado em ${new Date(lu.updated).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })})${lu.espnGames ? ` + ${lu.espnGames} jogo(s) mais recente(s) pela ESPN, com posses estimadas, até a próxima coleta diária` : ''}.` : 'Fonte: play-by-play da ESPN, com posses estimadas (o arquivo oficial da NBA ainda não está disponível).'}${lu.failed ? ` ${lu.failed} jogo(s) não carregaram; recarregue para tentar de novo.` : ''}</p>
 
       <div class="section-head" style="margin-top:8px"><div><h3>Combinações</h3><div class="pg-note" style="margin-top:4px">Foto com anel azul = em quadra · foto escura com OFF = fora de quadra</div></div>
         <div class="toolbar"><button class="btn sm" id="wowy-all" data-tip="Gera todas as combinações de em quadra/fora entre os jogadores da primeira combinação (até 3 jogadores).">Todas as variações ON/OFF</button>
