@@ -179,7 +179,20 @@ tr.bench-split td { font: 600 11px var(--font-data); color: var(--muted); text-t
 
 /* Jogadas */
 .plays { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
-.plays li { display: grid; grid-template-columns: 76px 1fr auto; gap: 10px; padding: 9px 14px; border-bottom: 1px solid var(--line); font-size: 14px; }
+.plays li { display: grid; grid-template-columns: 76px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 9px 14px; border-bottom: 1px solid var(--line); font-size: 14px; border-left: 3px solid transparent; }
+.plays .what { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
+.plays .kind { font: 600 10.5px/1 var(--font-data); text-transform: uppercase; letter-spacing: .05em; padding: 4px 6px; border-radius: 4px; background: var(--line); color: var(--muted); white-space: nowrap; }
+.plays .k-score .kind { background: color-mix(in srgb, var(--good) 18%, var(--surface)); color: var(--good); }
+.plays .k-tov .kind { background: color-mix(in srgb, var(--accent) 16%, var(--surface)); color: var(--accent); }
+.plays .k-eject { border-left-color: var(--live); }
+.plays .k-eject .kind { background: var(--live); color: #fff; }
+.plays .tm { display: inline-flex; align-items: center; gap: 4px; font: 600 12px var(--font-data); }
+.plays .tm img { width: 18px; height: 18px; object-fit: contain; }
+.plays .sc { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.plays .sc > span { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); }
+.plays .sc b { font-weight: 600; font-size: 14px; }
+.plays .sc .won { color: var(--ink); }
+.plays .sc .won b { font-weight: 800; }
 .plays li:last-child { border-bottom: 0; }
 .plays .t { font: 12px var(--font-data); color: var(--muted); }
 .plays .sc { font: 600 13px var(--font-data); }
@@ -336,7 +349,7 @@ table.box td { font-size: 12.5px; }
 @media (max-width: 560px) {
   .profile { grid-template-columns: 1fr; }
   .board { padding: 16px 10px; }
-  .plays li { grid-template-columns: 60px 1fr; }
+  .plays li { grid-template-columns: 60px minmax(0, 1fr); }
   .plays .sc { grid-column: 2; }
   nav.tabs { margin-left: 0; width: 100%; }
 }
@@ -611,7 +624,7 @@ async function viewGame(id, silent) {
     const boxes = [...(s.boxscore?.players || [])].sort((a, b) => order.indexOf(String(a.team?.id)) - order.indexOf(String(b.team?.id)));
     for (const b of boxes) { const c = cs.find(x => String(x.team?.id) === String(b.team?.id)); b._logo = logoOf(b.team) || logoOf(c?.team); }
     html += `<div class="box-pair">${boxes.map(p => boxTable(p, posById)).join('')}</div>`;
-    html += recentPlays(s.plays || []);
+    html += recentPlays(s.plays || [], cs);
     html += `<p class="note"><b>TS%</b> (True Shooting) mede eficiência real de arremesso, incluindo lances livres e bolas de 3: PTS ÷ (2 × (FGA + 0,44 × FTA)). Média da liga fica perto de 57–58%.</p>`;
   }
   app.innerHTML = html;
@@ -805,12 +818,43 @@ function boxTable(p, posById = new Map()) {
   return `<section class="section box-team"><div class="section-head"><h2 class="team-title">${logo ? `<img src="${esc(logo)}" alt="">` : ''}${esc(p.team?.displayName)}</h2><span class="eyebrow">Box score</span></div>
     <div class="table-wrap"><table class="box"><thead>${head}</thead><tbody>${body}</tbody></table></div></section>`;
 }
-function recentPlays(plays) {
+// Feed de jogadas: só cestas, turnovers, pedidos de tempo dos times e expulsões
+const TOV_RE = /turnover|traveling|travelling|backcourt|double dribble|discontinued dribble|palming|carrying|offensive goaltending|out of bounds|shot clock|3[- ]second|5[- ]second|8[- ]second|kicked ball|lane violation/i;
+function classifyPlay(p) {
+  const tt = p.type?.text || '', tx = p.text || '';
+  if (/eject/i.test(tt + ' ' + tx)) return 'eject';
+  if (p.scoringPlay) return 'score';
+  if (/timeout/i.test(tt) && !/official|tv timeout/i.test(tt + ' ' + tx)) return 'timeout';
+  if (TOV_RE.test(tt) || /turnover/i.test(tx)) return 'tov';
+  return null;
+}
+function recentPlays(plays, cs = []) {
   if (!plays.length) return '';
-  const last = plays.slice(-12).reverse();
-  return `<section class="section"><div class="section-head"><h2>Últimas jogadas</h2><span class="eyebrow">Play-by-play</span></div>
-    <ul class="plays">${last.map(p => `<li><span class="t">${esc(p.period?.number ? p.period.number + 'º · ' : '')}${esc(p.clock?.displayValue || '')}</span>
-      <span>${esc(p.text)}</span><span class="sc">${p.scoringPlay ? esc(p.awayScore + '–' + p.homeScore) : ''}</span></li>`).join('')}</ul></section>`;
+  const away = cs.find(c => c.homeAway === 'away') || cs[0] || {}, home = cs.find(c => c.homeAway === 'home') || cs[1] || {};
+  const teams = [away, home].map(c => ({ id: String(c.team?.id || ''), abbr: c.team?.abbreviation || '', logo: logoOf(c.team),
+    names: [c.team?.displayName, c.team?.shortDisplayName, c.team?.name, c.team?.location].filter(Boolean) }));
+  const teamOf = p => {
+    const id = String(p.team?.id || '');
+    return teams.find(t => t.id && t.id === id)
+      || teams.find(t => t.names.some(n => (p.text || '').toLowerCase().startsWith(n.toLowerCase())));
+  };
+  const badge = t => t ? `<span class="tm">${t.logo ? `<img src="${esc(t.logo)}" alt="">` : ''}${esc(t.abbr)}</span>` : '';
+  const items = plays.map(p => ({ p, kind: classifyPlay(p) })).filter(x => x.kind && (x.kind !== 'timeout' || teamOf(x.p))).slice(-15).reverse();
+  if (!items.length) return '';
+  const LBL = { score: 'Cesta', tov: 'Turnover', timeout: 'Tempo', eject: 'Expulsão' };
+  const rows = items.map(({ p, kind }) => {
+    const t = teamOf(p);
+    const when = `${p.period?.number ? (p.period.number > 4 ? 'OT' + (p.period.number - 4 > 1 ? p.period.number - 4 : '') : p.period.number + 'º') + ' · ' : ''}${p.clock?.displayValue || ''}`;
+    const what = kind === 'timeout' ? `${badge(t)} <b>Timeout</b>` : esc(p.text);
+    const scoreBox = kind === 'score' ? `<span class="sc">
+        <span class="${String(t?.id) === teams[0].id ? 'won' : ''}">${badge(teams[0])}<b>${esc(p.awayScore)}</b></span>
+        <span class="muted">–</span>
+        <span class="${String(t?.id) === teams[1].id ? 'won' : ''}"><b>${esc(p.homeScore)}</b>${badge(teams[1])}</span></span>` : '';
+    return `<li class="k-${kind}"><span class="t">${esc(when)}</span>
+      <span class="what">${kind === 'timeout' ? '' : `<span class="kind">${LBL[kind]}${kind === 'score' && p.scoreValue ? ` +${esc(p.scoreValue)}` : ''}</span>`}${what}</span>${scoreBox}</li>`;
+  }).join('');
+  return `<section class="section"><div class="section-head"><h2>Últimas jogadas</h2><span class="eyebrow">Cestas · turnovers · tempos · expulsões</span></div>
+    <ul class="plays">${rows}</ul></section>`;
 }
 
 /* ===================== Página: Lista de jogadores ===================== */
