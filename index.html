@@ -313,6 +313,15 @@ table.sortable th:first-child { z-index: 3; }
 .dbar .neg { right: 50%; background: var(--above); } .dbar .pos { left: 50%; background: var(--below); }
 .tip { position: fixed; z-index: 50; max-width: 280px; padding: 8px 10px; border-radius: 8px; background: var(--ink); color: var(--bg); font: 12px/1.45 var(--font-body); pointer-events: none; box-shadow: 0 6px 20px rgb(0 0 0 / .25); }
 
+/* Box scores lado a lado */
+.box-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.box-team { min-width: 0; }
+.team-title { display: flex; align-items: center; gap: 10px; }
+.team-title img { width: 32px; height: 32px; object-fit: contain; flex: none; }
+table.box th, table.box td { padding: 7px 7px; }
+table.box td { font-size: 12.5px; }
+@media (max-width: 900px) { .box-pair { grid-template-columns: 1fr; } }
+
 .livebar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 16px; border: 1px solid var(--sky); border-radius: 10px; background: color-mix(in srgb, var(--sky) 22%, var(--surface)); text-decoration: none; }
 
 .section { display: grid; gap: 12px; }
@@ -594,7 +603,14 @@ async function viewGame(id, silent) {
     if (token !== renderToken) return;
   } else {
     html += teamCompare(s.boxscore?.teams || [], cs);
-    for (const p of (s.boxscore?.players || [])) html += boxTable(p);
+    // Elencos (posições específicas PG/SG/SF/PF/C); se demorarem, segue com a posição do box score
+    const roster = await Promise.race([loadAllPlayers().catch(() => null), new Promise(r => setTimeout(() => r(null), 2500))]);
+    if (token !== renderToken) return;
+    const posById = new Map((roster?.players || []).map(x => [String(x.id), x.pos]));
+    const order = cs.map(c => String(c.team?.id));
+    const boxes = [...(s.boxscore?.players || [])].sort((a, b) => order.indexOf(String(a.team?.id)) - order.indexOf(String(b.team?.id)));
+    for (const b of boxes) { const c = cs.find(x => String(x.team?.id) === String(b.team?.id)); b._logo = logoOf(b.team) || logoOf(c?.team); }
+    html += `<div class="box-pair">${boxes.map(p => boxTable(p, posById)).join('')}</div>`;
     html += recentPlays(s.plays || []);
     html += `<p class="note"><b>TS%</b> (True Shooting) mede eficiência real de arremesso, incluindo lances livres e bolas de 3: PTS ÷ (2 × (FGA + 0,44 × FTA)). Média da liga fica perto de 57–58%.</p>`;
   }
@@ -755,15 +771,24 @@ function teamCompare(teams, cs) {
     <span class="eyebrow">${esc(cs[0]?.team?.abbreviation)} × ${esc(cs[1]?.team?.abbreviation)}</span></div>
     <div class="compare">${rows}</div></section>`;
 }
-function boxTable(p) {
+// Ordem por posição: PG → SG → SF → PF → C (posições genéricas G/F ficam entre as específicas)
+const posRank = pos => POS_ORDER[String(pos || '').toUpperCase()] ?? 9;
+function boxTable(p, posById = new Map()) {
   const block = p.statistics?.[0];
   if (!block) return '';
+  const posOf = a => { const r = posById.get(String(a.athlete?.id)); return /^(PG|SG|SF|PF|C)$/.test(r || '') ? r : (a.athlete?.position?.abbreviation || r || ''); };
+  const group = a => a.starter ? 0 : (a.didNotPlay || !a.stats?.length) ? 2 : 1;
+  const athletes = (block.athletes || []).map((a, i) => ({ ...a, _pos: posOf(a), _i: i }))
+    .sort((x, y) => group(x) - group(y) || posRank(x._pos) - posRank(y._pos) || x._i - y._i);
   const labels = block.labels || block.names || [];
   const idx = l => labels.indexOf(l);
   const iFG = idx('FG'), i3 = idx('3PT'), iFT = idx('FT'), iPTS = idx('PTS');
-  const head = `<tr><th>Jogador</th>${labels.map(l => `<th class="${l === 'PTS' ? 'hl' : ''}">${esc(l)}</th>`).join('')}<th title="True Shooting %">TS%</th><th title="Effective FG %">eFG%</th></tr>`;
+  // Ordem de exibição: MIN, PTS e depois o resto (PTS fica visível mesmo com a tabela pela metade da largura)
+  const iMIN = idx('MIN');
+  const cols = [iMIN, iPTS, ...labels.map((_, j) => j).filter(j => j !== iMIN && j !== iPTS)].filter(j => j >= 0);
+  const head = `<tr><th>Jogador</th>${cols.map(j => `<th class="${j === iPTS ? 'hl' : ''}">${esc(labels[j])}</th>`).join('')}<th title="True Shooting %">TS%</th><th title="Effective FG %">eFG%</th></tr>`;
   let benchMarked = false;
-  const body = (block.athletes || []).map((a, n) => {
+  const body = athletes.map((a, n) => {
     const at = a.athlete || {};
     let pre = '';
     if (!a.starter && !benchMarked && n > 0) { benchMarked = true; pre = `<tr class="bench-split"><td colspan="${labels.length + 3}">Banco</td></tr>`; }
@@ -772,12 +797,13 @@ function boxTable(p) {
     }
     const [fgm, fga] = madeAtt(a.stats[iFG]); const [tpm] = madeAtt(a.stats[i3]); const [, fta] = madeAtt(a.stats[iFT]);
     const pts = toNum(a.stats[iPTS]);
-    return pre + `<tr><td><a class="plink" href="#/jogador/${esc(at.id)}">${esc(at.shortName || at.displayName)}</a> <span class="muted" style="font-size:11px">${esc(at.position?.abbreviation || '')}</span></td>
-      ${a.stats.map((v, j) => `<td class="${j === iPTS ? 'hl' : ''}">${esc(v)}</td>`).join('')}
+    return pre + `<tr><td><a class="plink" href="#/jogador/${esc(at.id)}">${esc(at.shortName || at.displayName)}</a> <span class="muted" style="font-size:11px">${esc(a._pos)}</span></td>
+      ${cols.map(j => `<td class="${j === iPTS ? 'hl' : ''}">${esc(a.stats[j] ?? '')}</td>`).join('')}
       <td>${fga ? pct(tsPct(pts, fga, fta)) : '—'}</td><td>${fga ? pct(efgPct(fgm, tpm, fga)) : '—'}</td></tr>`;
   }).join('');
-  return `<section class="section"><div class="section-head"><h2>${esc(p.team?.displayName)}</h2><span class="eyebrow">Box score</span></div>
-    <div class="table-wrap"><table><thead>${head}</thead><tbody>${body}</tbody></table></div></section>`;
+  const logo = p._logo || logoOf(p.team);
+  return `<section class="section box-team"><div class="section-head"><h2 class="team-title">${logo ? `<img src="${esc(logo)}" alt="">` : ''}${esc(p.team?.displayName)}</h2><span class="eyebrow">Box score</span></div>
+    <div class="table-wrap"><table class="box"><thead>${head}</thead><tbody>${body}</tbody></table></div></section>`;
 }
 function recentPlays(plays) {
   if (!plays.length) return '';
