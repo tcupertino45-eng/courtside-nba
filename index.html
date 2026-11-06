@@ -413,6 +413,19 @@ td.l10 { text-align: center; }
 .pill.small-sample { margin-left: 4px; color: var(--gold-text); border-color: var(--gold); text-transform: none; letter-spacing: 0; }
 @media (max-width: 900px) { .std-pair, .combo-pair { grid-template-columns: 1fr; } }
 
+/* Links para a página do time e médias no perfil */
+a.team-go { color: inherit; text-decoration: none; display: inline-flex; align-items: center; gap: 10px; border-radius: 8px; }
+a.team-go:hover h2, h2.team-title a.team-go:hover { color: var(--accent); }
+.board a.team-go { display: grid; justify-items: center; gap: 6px; padding: 4px 8px; }
+.board a.team-go:hover { background: rgb(255 255 255 / .06); }
+.board a.team-go:hover .abbr { color: var(--led-text); }
+.hero-stats { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 6px 22px; margin-top: 4px; }
+.hero-stats > div { display: grid; gap: 1px; }
+.hero-stats b { font: 700 clamp(24px, 4vw, 32px)/1 var(--font-display); font-variant-numeric: tabular-nums; }
+.hero-stats span { font: 600 11px var(--font-data); letter-spacing: .06em; color: var(--muted); cursor: help; }
+.hero-stats small { flex-basis: 100%; color: var(--muted); font-size: 12px; }
+.pos-avg { font-weight: 500 !important; margin-top: 3px; cursor: help; }
+
 .livebar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 16px; border: 1px solid var(--sky); border-radius: 10px; background: color-mix(in srgb, var(--sky) 22%, var(--surface)); text-decoration: none; }
 
 .section { display: grid; gap: 12px; }
@@ -676,8 +689,8 @@ async function viewGame(id, silent) {
   const status = comp.status;
   const st = stateOf(status);
   const cs = [...(comp.competitors || [])].sort(a => a.homeAway === 'away' ? -1 : 1);
-  const side = c => `<div class="side"><img src="${esc(logoOf(c.team))}" alt="">
-    <div class="abbr">${esc(c.team?.abbreviation)}</div>
+  const side = c => `<div class="side"><a class="team-go" href="#/time/${esc(c.team?.id)}" title="Ver ${esc(c.team?.displayName)}"><img src="${esc(logoOf(c.team))}" alt="">
+    <div class="abbr">${esc(c.team?.abbreviation)}</div></a>
     <div class="pts">${st === 'pre' ? '–' : esc(c.score ?? 0)}</div>
     <div style="font-size:12px;color:#a9a59c">${esc(c.record?.[0]?.summary || c.team?.displayName || '')}</div></div>`;
   const venue = s.gameInfo?.venue?.fullName;
@@ -820,7 +833,7 @@ async function pregameSection(summary, cs) {
       : 'Base: jogadores com mais minutos por jogo.';
 
     return `<div class="pg-team">
-      <div class="pg-head"><img src="${esc(t.logo)}" alt=""><div><div class="eyebrow">${i === 0 ? 'Visitante' : 'Mandante'}</div><h2>${esc(t.name)}</h2></div></div>
+      <a class="pg-head team-go" href="#/time/${esc(t.id)}"><img src="${esc(t.logo)}" alt=""><div><div class="eyebrow">${i === 0 ? 'Visitante' : 'Mandante'}</div><h2>${esc(t.name)}</h2></div></a>
       <div class="pg-block"><h3>Provável quinteto titular</h3><p class="pg-note">${basis}</p>
         <ol class="pg-list starters">${startP.map(p => row(p, doubt(p.id))).join('') || '<li class="muted">Elenco indisponível.</li>'}</ol></div>
       <div class="pg-block"><h3>Disponíveis</h3>
@@ -894,7 +907,7 @@ function boxTable(p, posById = new Map()) {
       <td>${fga ? pct(tsPct(pts, fga, fta)) : '—'}</td><td>${fga ? pct(efgPct(fgm, tpm, fga)) : '—'}</td></tr>`;
   }).join('');
   const logo = p._logo || logoOf(p.team);
-  return `<section class="section box-team"><div class="section-head"><h2 class="team-title">${logo ? `<img src="${esc(logo)}" alt="">` : ''}${esc(p.team?.displayName)}</h2><span class="eyebrow">Box score</span></div>
+  return `<section class="section box-team"><div class="section-head"><h2 class="team-title"><a class="team-go" href="#/time/${esc(p.team?.id)}">${logo ? `<img src="${esc(logo)}" alt="">` : ''}${esc(p.team?.displayName)}</a></h2><span class="eyebrow">Box score</span></div>
     <div class="table-wrap"><table class="box"><thead>${head}</thead><tbody>${body}</tbody></table></div></section>`;
 }
 // Feed de jogadas: só cestas, turnovers, pedidos de tempo dos times e expulsões
@@ -1304,11 +1317,12 @@ async function viewPlayer(id) {
   setTab('jogadores'); stopPolling();
   const token = ++renderToken;
   app.innerHTML = `<div class="skeleton" style="height:200px"></div><div class="skeleton" style="height:300px"></div>`;
-  const [infoR, statsR, boardR, logR] = await Promise.allSettled([
+  const [infoR, statsR, boardR, logR, leagueR] = await Promise.allSettled([
     getAny(P.athlete(encodeURIComponent(id))),
     getAny(P.athleteStats(encodeURIComponent(id))),
     getJSON(`${API.site}/scoreboard`),
     getAny(P.gamelog(encodeURIComponent(id))),
+    loadLeagueStats(),
   ]);
   if (token !== renderToken) return;
   if (infoR.status === 'rejected') { showError(infoR.reason, () => viewPlayer(id)); return; }
@@ -1339,14 +1353,18 @@ async function viewPlayer(id) {
     <div class="profile">${a.headshot?.href ? `<img class="photo" src="${esc(a.headshot.href)}" alt="">` : ''}
       <div style="display:grid;gap:6px;min-width:0"><div class="eyebrow">${esc(a.team?.displayName || 'Sem equipe')} · ${esc(a.position?.abbreviation || '')}</div>
       <h1>${esc(a.displayName)}</h1>${a.status?.name && a.status.name !== 'Active' ? `<span class="pill">${esc(a.status.name)}</span>` : ''}
+      ${(() => { const m = leagueR.status === 'fulfilled' ? leagueR.value.find(x => x.id === String(a.id || id)) : null;
+        if (!m || !m.gp) return '';
+        const f = v => v == null ? '—' : v.toFixed(1).replace('.', ',');
+        return `<div class="hero-stats" aria-label="Médias da temporada"><div><b>${f(m.pts)}</b><span data-tip="Pontos por jogo nesta temporada.">PTS</span></div><div><b>${f(m.reb)}</b><span data-tip="Rebotes por jogo nesta temporada.">REB</span></div><div><b>${f(m.ast)}</b><span data-tip="Assistências por jogo nesta temporada.">AST</span></div><small>Médias da temporada · ${m.gp} jogo${m.gp === 1 ? '' : 's'}</small></div>`; })()}
       <div class="toolbar" style="margin-top:6px"><a class="btn sky" href="#/comparar/${esc(a.id || id)}">Comparar</a></div></div></div>
     ${liveHtml}
     <div class="facts">${facts.map(([k, v]) => `<div><span class="eyebrow">${k}</span><b>${esc(v)}</b></div>`).join('')}</div>`;
 
   const gl = logR.status === 'fulfilled' ? parseGamelog(logR.value) : null;
   html += shotsShell();
-  html += advancedShell();
   html += statsR.status === 'fulfilled' ? careerSection(statsR.value) : `<div class="empty">Estatísticas de carreira indisponíveis para este jogador.</div>`;
+  html += advancedShell();
   html += gamelogSection(gl);
   app.innerHTML = html;
   initShots(String(a.id || id), gl, token);
@@ -1880,19 +1898,34 @@ function hustleRates(h) {
 // Aproveitamento defendido (DFG% vs FG% normal), gerado todo dia pela automação do GitHub
 // (scripts/fetch_defense.py) e salvo junto do site.
 const DEFENSE_URL = 'data/defense.json';
+// Tipos de arremesso. "mid" (meia distância) = bolas de 2 menos as do garrafão; o garrafão usa a faixa
+// "até 10 pés" (≈3 m) da NBA.com, ou "até 6 pés" enquanto o arquivo ainda não tiver essa faixa.
 const DFG_CATS = [
-  { k: 'geral', l: 'Todos os arremessos', min: 5 },
-  { k: 'fg2',   l: 'Bolas de 2', min: 3 },
+  { k: 'geral', l: 'Total de arremessos', min: 5 },
   { k: 'fg3',   l: 'Bolas de 3', min: 2 },
-  { k: 'aro',   l: 'Perto da cesta (até 1,8 m)', min: 2 },
-  { k: 'longe', l: 'Longe da cesta (mais de 4,6 m)', min: 1.5 },
+  { k: 'mid',   l: 'Meia distância', min: 1.5, tip: 'Arremessos de 2 pontos fora do garrafão (bolas de 2 menos as tentadas até ~3 m da cesta).' },
+  { k: 'paint', l: 'No garrafão', min: 2, tip: 'Arremessos até ~3 m (10 pés) da cesta, a faixa da NBA.com mais próxima da área pintada.' },
 ];
+// Linha [cestas, tentativas, % contra, % normal, diferença] de um tipo, calculando meia distância e garrafão
+function dfgCat(p, k) {
+  const c = p.c || {}, paint = c.p10 || c.aro;
+  if (k === 'paint') return paint || null;
+  if (k !== 'mid') return c[k] || null;
+  const two = c.fg2; if (!two || !paint) return null;
+  const m = two[0] - paint[0], a = two[1] - paint[1];
+  if (!(a > 0)) return [0, 0, null, null, null];
+  const norm = (two[3] * two[1] - paint[3] * paint[1]) / a, pct = m / a;
+  return [m, a, pct, norm, pct - norm];
+}
+// Posição de cada jogador do arquivo de defesa (pelo elenco da ESPN, ligando pelo nome)
+const posGroup = pos => { const p = String(pos || '').toUpperCase(); return /^(PG|SG|G)$/.test(p) ? 'G' : /^(SF|PF|F|G-F|F-G)$/.test(p) ? 'F' : /^(C|F-C|C-F)$/.test(p) ? 'C' : ''; };
+const POS_PT = { G: 'armadores', F: 'alas', C: 'pivôs' };
 function loadDefense() {
   return fetch(DEFENSE_URL, { cache: 'no-cache' })
     .then(r => r.ok ? r.json() : Promise.reject(new Error('arquivo não encontrado (HTTP ' + r.status + ')')))
     .catch(e => ({ error: location.protocol === 'file:' ? new Error('só funciona no site publicado, não abrindo o arquivo direto do computador') : e }));
 }
-function dfgPanel(def, me) {
+function dfgPanel(def, me, posById = new Map()) {
   const head = `<div class="section-head" style="margin-top:8px"><div><h3>Aproveitamento dos adversários contra ele</h3>
     <div class="eyebrow" style="margin-top:4px">Quando ele é o defensor mais próximo · rastreamento NBA.com</div></div></div>`;
   if (!def || def.error) return head + `<div class="empty">Dados ainda não disponíveis: ${esc(def?.error?.message || 'sem arquivo')}.</div>`;
@@ -1901,20 +1934,27 @@ function dfgPanel(def, me) {
   const p = def.players.find(x => normName(x.name) === key);
   if (!p) return head + `<div class="empty">Jogador não encontrado nos dados de defesa da NBA.com desta temporada.</div>`;
   const maxG = Math.max(1, ...def.players.map(x => x.g || 0));
+  const myPos = posGroup(posById.get(normName(me.name)) || me.pos || p.pos);
+  const peers = myPos ? def.players.filter(x => posGroup(posById.get(normName(x.name)) || x.pos) === myPos && (x.g || 0) >= Math.ceil(maxG / 2)) : [];
+  const pp = x => x == null || !isFinite(x) ? '—' : (x * 100).toFixed(1).replace('.', ',');
   const rows = DFG_CATS.map(c => {
-    const v = p.c?.[c.k];
-    if (!v || !v[1]) return `<tr><th scope="row">${c.l}</th><td colspan="5" class="muted" style="text-align:center">sem arremessos defendidos</td></tr>`;
+    const v = dfgCat(p, c.k);
+    if (!v || !v[1]) return `<tr><th scope="row">${c.l}</th><td colspan="5" class="muted" style="text-align:center">${v ? 'sem arremessos defendidos' : 'ainda não disponível (chega na próxima coleta diária)'}</td></tr>`;
     const [m, a, pct, norm, diff] = v;
     // Percentil da diferença entre jogadores com volume parecido (menor diferença = melhor defesa)
-    const pool = def.players.filter(x => (x.g || 0) >= Math.ceil(maxG / 2) && x.c?.[c.k] && x.c[c.k][1] / x.g >= c.min).map(x => x.c[c.k][4]);
+    const pool = def.players.filter(x => (x.g || 0) >= Math.ceil(maxG / 2)).map(x => [x, dfgCat(x, c.k)]).filter(([x, r]) => r && r[1] / x.g >= c.min).map(([, r]) => r[4]);
     const pc = pool.length >= 10 ? Math.round(100 * (pool.filter(d => d > diff).length + pool.filter(d => d === diff).length / 2) / pool.length) : null;
-    const pp = x => (x * 100).toFixed(1).replace('.', ',');
+    // Média da posição: todos os arremessos defendidos por jogadores da mesma posição, somados
+    let pm = 0, pa = 0, pn = 0;
+    for (const x of peers) { const r = dfgCat(x, c.k); if (r && r[1] > 0 && r[3] != null) { pm += r[0]; pa += r[1]; pn += r[3] * r[1]; } }
+    const avgPct = pa ? pm / pa : null, avgNorm = pa ? pn / pa : null, avgDiff = pa ? avgPct - avgNorm : null;
+    const sub = v => myPos && v != null ? `<div class="adv-p pos-avg" data-tip="Média dos ${POS_PT[myPos]} da liga (com volume de jogo comparável) defendendo esse tipo de arremesso.">média ${POS_PT[myPos]}: ${v}</div>` : '';
     const dCls = diff <= -0.02 ? 'd-good' : diff >= 0.02 ? 'd-bad' : '';
     const w = Math.min(100, Math.abs(diff) / 0.12 * 100);
-    return `<tr><th scope="row">${c.l}</th>
+    return `<tr><th scope="row"${c.tip ? ` data-tip="${esc(c.tip)}"` : ''}>${c.l}</th>
       <td>${(a / p.g).toFixed(1).replace('.', ',')}<div class="adv-p">${m}/${a} no total</div></td>
-      <td><b>${pp(pct)}%</b></td><td>${pp(norm)}%</td>
-      <td class="${dCls}"><b>${diff > 0 ? '+' : ''}${pp(diff)}</b> p.p.
+      <td><b>${pp(pct)}%</b>${sub(pp(avgPct) + '%')}</td><td>${pp(norm)}%${sub(pp(avgNorm) + '%')}</td>
+      <td class="${dCls}"><b>${diff > 0 ? '+' : ''}${pp(diff)}</b> p.p.${sub((avgDiff > 0 ? '+' : '') + pp(avgDiff) + ' p.p.')}
         <div class="dbar" aria-hidden="true"><span class="${diff < 0 ? 'neg' : 'pos'}" style="width:${w / 2}%"></span></div></td>
       <td><span class="adv-p ${pc == null ? '' : pc >= 67 ? 'pc-hi' : pc <= 33 ? 'pc-lo' : ''}" style="font-size:13px">${pc ?? '—'}</span></td></tr>`;
   }).join('');
@@ -1926,7 +1966,7 @@ function dfgPanel(def, me) {
       <th data-tip="Diferença em pontos percentuais. Negativo (azul) = os adversários acertam menos que o normal quando ele marca; positivo (vermelho) = acertam mais.">Diferença</th>
       <th data-tip="Percentil da diferença entre jogadores com volume parecido. 90 = defende melhor que 90% deles nesse tipo de arremesso.">Percentil</th></tr></thead>
     <tbody>${rows}</tbody></table></div>
-    <p class="note">Exemplo de leitura: "−6,0 p.p." significa que, com ele marcando, os adversários acertam 6 pontos percentuais a menos do que costumam acertar. Dados de ${esc(def.season || '')}, atualizados em ${upd}.</p>`;
+    <p class="note">Exemplo de leitura: "−6,0 p.p." significa que, com ele marcando, os adversários acertam 6 pontos percentuais a menos do que costumam acertar. Abaixo de cada número, a média dos ${myPos ? POS_PT[myPos] : 'jogadores da mesma posição'} da liga (posições pelo elenco da ESPN: armadores, alas e pivôs). ${def.players.some(x => x.c?.p10) ? '' : '"No garrafão" usa por enquanto a faixa de até 1,8 m da cesta; a partir da próxima coleta diária, passa a usar até ~3 m. '}Dados de ${esc(def.season || '')}, atualizados em ${upd}.</p>`;
 }
 async function prepareSeason() {
   const [stats, roster] = await Promise.all([loadLeagueStats(), loadAllPlayers().catch(() => ({ players: [] }))]);
@@ -2031,6 +2071,10 @@ async function initAdvanced(pid, token, careerJson) {
   try { stats = await prepareSeason(); }
   catch (e) { if (token === renderToken) body.innerHTML = `<div class="empty">Não foi possível carregar as estatísticas da liga para calcular os números avançados.</div>`; return; }
   if (token !== renderToken) return;
+  // Posição de cada jogador (elenco da ESPN), pelo nome normalizado: usada na média por posição da defesa
+  const rosterAll = await loadAllPlayers().catch(() => ({ players: [] }));
+  if (token !== renderToken) return;
+  const posById = new Map(rosterAll.players.map(p => [normName(p.name), p.pos]));
   const L = stats.leagueTeam;
   const found = stats.find(s => s.id === String(pid));
   let me = found;
@@ -2085,7 +2129,7 @@ async function initAdvanced(pid, token, careerJson) {
         }).join('')).join('')}</tr>
         <tr class="adv-avg"><th scope="row">Média da liga</th>${groups.map((g, gi) => g.cols.map((c, ci) => `<td class="${ci === 0 && gi > 0 ? 'gsep' : ''}">${fmtAdv(c, avg(c))}</td>`).join('')).join('')}</tr></tbody>
     </table></div>
-    <p class="note">Passe o mouse (ou toque) no nome de uma estatística para ver a explicação. O número pequeno é o percentil: ${pool.length} jogadores com volume de jogo comparável; 90 significa melhor que 90% deles. Azul = percentil alto, vermelho = baixo.${noLeagueReb && side === 'ataque' || noLeagueReb && side === 'defesa' ? ' ORB%, DRB% e DREB/36 aparecem sem percentil porque a ESPN não informa rebotes ofensivos e defensivos da liga inteira.' : ''}${qualified ? '' : ' Este jogador ainda tem poucos jogos ou minutos, então os números podem oscilar bastante.'}${side === 'defesa' ? hNote + ' ' : ''}</p>${side === 'defesa' ? dfgPanel(def, me) : ''}`;
+    <p class="note">Passe o mouse (ou toque) no nome de uma estatística para ver a explicação. O número pequeno é o percentil: ${pool.length} jogadores com volume de jogo comparável; 90 significa melhor que 90% deles. Azul = percentil alto, vermelho = baixo.${noLeagueReb && side === 'ataque' || noLeagueReb && side === 'defesa' ? ' ORB%, DRB% e DREB/36 aparecem sem percentil porque a ESPN não informa rebotes ofensivos e defensivos da liga inteira.' : ''}${qualified ? '' : ' Este jogador ainda tem poucos jogos ou minutos, então os números podem oscilar bastante.'}${side === 'defesa' ? hNote + ' ' : ''}</p>${side === 'defesa' ? dfgPanel(def, me, posById) : ''}`;
   };
   document.querySelectorAll('#adv-side [data-side]').forEach(b => b.onclick = () => {
     document.querySelectorAll('#adv-side [data-side]').forEach(x => x.setAttribute('aria-checked', x === b));
