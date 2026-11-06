@@ -321,7 +321,7 @@ table.sortable th:first-child { z-index: 3; }
 .dfg-table td { text-align: center; padding: 10px 12px; min-width: 110px; }
 .dfg-table td b { font-weight: 600; font-size: 15px; }
 .dfg-table th[data-tip] { cursor: help; text-decoration: underline dotted color-mix(in srgb, var(--muted) 60%, transparent); text-underline-offset: 3px; text-align: center; }
-.dfg-table tbody th { text-align: left; font: 500 13px var(--font-body); color: var(--ink); text-transform: none; letter-spacing: 0; position: sticky; left: 0; background: var(--surface); min-width: 170px; white-space: normal; }
+.dfg-table tbody th { text-align: center; font: 500 13px var(--font-body); color: var(--ink); text-transform: none; letter-spacing: 0; position: sticky; left: 0; background: var(--surface); min-width: 170px; white-space: normal; }
 .d-good { color: var(--above); } .d-bad { color: var(--below); }
 .dbar { position: relative; height: 4px; margin: 6px auto 0; width: 90px; background: var(--line); border-radius: 2px; }
 .dbar::after { content: ""; position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px; background: var(--muted); }
@@ -1953,7 +1953,7 @@ function dfgPanel(def, me, posById = new Map()) {
     const w = Math.min(100, Math.abs(diff) / 0.12 * 100);
     return `<tr><th scope="row"${c.tip ? ` data-tip="${esc(c.tip)}"` : ''}>${c.l}</th>
       <td>${(a / p.g).toFixed(1).replace('.', ',')}<div class="adv-p">${m}/${a} no total</div></td>
-      <td><b>${pp(pct)}%</b>${sub(pp(avgPct) + '%')}</td><td>${pp(norm)}%${sub(pp(avgNorm) + '%')}</td>
+      <td><b>${pp(pct)}%</b>${sub(pp(avgPct) + '%')}</td><td>${pp(norm)}%</td>
       <td class="${dCls}"><b>${diff > 0 ? '+' : ''}${pp(diff)}</b> p.p.${sub((avgDiff > 0 ? '+' : '') + pp(avgDiff) + ' p.p.')}
         <div class="dbar" aria-hidden="true"><span class="${diff < 0 ? 'neg' : 'pos'}" style="width:${w / 2}%"></span></div></td>
       <td><span class="adv-p ${pc == null ? '' : pc >= 67 ? 'pc-hi' : pc <= 33 ? 'pc-lo' : ''}" style="font-size:13px">${pc ?? '—'}</span></td></tr>`;
@@ -1966,7 +1966,7 @@ function dfgPanel(def, me, posById = new Map()) {
       <th data-tip="Diferença em pontos percentuais. Negativo (azul) = os adversários acertam menos que o normal quando ele marca; positivo (vermelho) = acertam mais.">Diferença</th>
       <th data-tip="Percentil da diferença entre jogadores com volume parecido. 90 = defende melhor que 90% deles nesse tipo de arremesso.">Percentil</th></tr></thead>
     <tbody>${rows}</tbody></table></div>
-    <p class="note">Exemplo de leitura: "−6,0 p.p." significa que, com ele marcando, os adversários acertam 6 pontos percentuais a menos do que costumam acertar. Abaixo de cada número, a média dos ${myPos ? POS_PT[myPos] : 'jogadores da mesma posição'} da liga (posições pelo elenco da ESPN: armadores, alas e pivôs). ${def.players.some(x => x.c?.p10) ? '' : '"No garrafão" usa por enquanto a faixa de até 1,8 m da cesta; a partir da próxima coleta diária, passa a usar até ~3 m. '}Dados de ${esc(def.season || '')}, atualizados em ${upd}.</p>`;
+    <p class="note">Exemplo de leitura: "−6,0 p.p." significa que, com ele marcando, os adversários acertam 6 pontos percentuais a menos do que costumam acertar. Abaixo do acerto contra ele e da diferença, a média dos ${myPos ? POS_PT[myPos] : 'jogadores da mesma posição'} da liga (posições pelo elenco da ESPN: armadores, alas e pivôs). ${def.players.some(x => x.c?.p10) ? '' : '"No garrafão" usa por enquanto a faixa de até 1,8 m da cesta; a partir da próxima coleta diária, passa a usar até ~3 m. '}Dados de ${esc(def.season || '')}, atualizados em ${upd}.</p>`;
 }
 async function prepareSeason() {
   const [stats, roster] = await Promise.all([loadLeagueStats(), loadAllPlayers().catch(() => ({ players: [] }))]);
